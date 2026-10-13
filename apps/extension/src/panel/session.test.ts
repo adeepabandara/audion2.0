@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { LandmarkFrame } from '../lib/landmarks';
 import { makeFrames, makeHand, type Segment } from '../testing/fixtures';
 import { phaseOf, viewOf } from './machine';
+import { fakeVoice } from '../testing/fakeSession';
 import { AudionSession, type SessionDeps } from './session';
 
 afterEach(() => vi.useRealTimers());
@@ -14,6 +15,8 @@ function harness(
     luminance?: () => number | null;
     camera?: () => Promise<MediaStream>;
     trackerStart?: () => Promise<void>;
+    compose?: (r: unknown) => unknown;
+    speak?: (r: unknown) => unknown;
   } = {},
 ) {
   const track = { stop: vi.fn() };
@@ -27,6 +30,18 @@ function harness(
       mime: 'video/webm',
       durationMs: 1400,
     })),
+  };
+  const voice = fakeVoice();
+  const chat = vi.fn(async () => 'sent' as 'sent' | 'draft' | 'no-chat' | 'failed');
+  const settingsRef = {
+    current: {
+      holdTimeMs: 400,
+      pauseMs: 1500,
+      speakMode: 'auto' as 'auto' | 'confirm',
+      voiceId: 'aria' as const,
+      speed: 1,
+      postToChat: false,
+    },
   };
   let recognizeCalls = 0;
   const sent: unknown[] = [];
@@ -42,12 +57,25 @@ function harness(
     send: vi.fn(async (req) => {
       sent.push(req);
       if (req.type === 'api/health') return { ok: true, mode: 'mock', confidenceThreshold: 0.5 };
+      if (req.type === 'api/compose')
+        return opts.compose?.(req) ?? { ok: true, sentence: 'Hello, please wait.' };
+      if (req.type === 'api/speak')
+        return (
+          opts.speak?.(req) ?? {
+            ok: true,
+            audioBase64: btoa('RIFF-audio'),
+            contentType: 'audio/wav',
+          }
+        );
+      if (req.type === 'transcript/add') return { ok: true };
       return (
         opts.recognize ??
         (() => ({ ok: true, sign: 'hello', confidence: 0.9, alternatives: [], latencyMs: 1 }))
       )(++recognizeCalls);
     }),
-    settings: () => ({ holdTimeMs: 400, pauseMs: 1500 }),
+    settings: () => settingsRef.current,
+    voice,
+    chat,
     luminance: opts.luminance ?? (() => 120),
     now: () => 0,
     setInterval: () => 1,
@@ -64,7 +92,19 @@ function harness(
     for (const f of frames) await session.tick(f);
     await flush();
   };
-  return { session, deps, tracker, recorder, track, sent, feed, stream };
+  return {
+    session,
+    deps,
+    tracker,
+    recorder,
+    track,
+    sent,
+    feed,
+    stream,
+    voice,
+    chat,
+    settings: settingsRef.current,
+  };
 }
 
 const ONE_SIGN: Segment[] = [
@@ -310,5 +350,216 @@ describe('AudionSession', () => {
     await h.session.turnOn();
     await h.feed([...ONE_SIGN, { kind: 'none', ms: 2500 }]);
     expect(onPause).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('AudionSession: compose and speak', () => {
+  const sentSpeak = (h: ReturnType<typeof harness>) =>
+    h.sent.filter((r) => (r as { type: string }).type === 'api/speak');
+  const signAndPause: Segment[] = [...ONE_SIGN, { kind: 'none', ms: 2200 }];
+
+  it('auto-speak: after a pause the signs become a sentence that is spoken into the call', async () => {
+    const h = harness();
+    await h.session.turnOn();
+    await h.feed(signAndPause);
+    await flush();
+    const compose = h.sent.find((r) => (r as { type: string }).type === 'api/compose') as {
+      signs: string[];
+    };
+    expect(compose.signs).toEqual(['hello']);
+    expect(sentSpeak(h)[0]).toMatchObject({
+      text: 'Hello, please wait.',
+      voiceId: 'aria',
+      speed: 1,
+    });
+    expect(h.voice.spoken).toHaveLength(1);
+    expect(new TextDecoder().decode(h.voice.spoken[0])).toBe('RIFF-audio'); // the API's audio, handed to the call
+    const s = h.session.getState();
+    expect(s.caption).toBe('Hello, please wait.');
+    expect(s.chips).toEqual([]);
+    expect(s.sentence).toBeNull();
+    expect(h.sent.find((r) => (r as { type: string }).type === 'transcript/add')).toMatchObject({
+      text: 'Hello, please wait.',
+    });
+  });
+
+  it('confirm-first: stops at the sentence; Speak button speaks it; Cancel drops it', async () => {
+    const h = harness();
+    h.settings.speakMode = 'confirm';
+    await h.session.turnOn();
+    await h.feed(signAndPause);
+    await flush();
+    expect(h.session.getState().sentence).toBe('Hello, please wait.');
+    expect(h.voice.spoken).toHaveLength(0);
+
+    await h.session.speakNow();
+    expect(h.voice.spoken).toHaveLength(1);
+    expect(h.session.getState().sentence).toBeNull();
+
+    await h.feed(signAndPause);
+    await flush();
+    expect(h.session.getState().sentence).not.toBeNull();
+    h.session.clear();
+    expect(h.session.getState()).toMatchObject({ sentence: null, chips: [] });
+    expect(h.voice.spoken).toHaveLength(1); // nothing more was spoken
+  });
+
+  it('the Speak button composes and speaks the signs so far without waiting for a pause', async () => {
+    const h = harness();
+    h.settings.speakMode = 'confirm';
+    await h.session.turnOn();
+    await h.feed(ONE_SIGN); // hands still up: no pause yet
+    expect(h.sent.some((r) => (r as { type: string }).type === 'api/compose')).toBe(false);
+    await h.session.speakNow();
+    expect(h.voice.spoken).toHaveLength(1);
+  });
+
+  it('waits for a low-confidence sign to be confirmed before composing', async () => {
+    const h = harness({
+      recognize: () => ({
+        ok: true,
+        sign: 'tomorrow',
+        confidence: 0.3,
+        alternatives: [],
+        latencyMs: 1,
+      }),
+    });
+    await h.session.turnOn();
+    await h.feed(signAndPause);
+    await flush();
+    expect(h.sent.some((r) => (r as { type: string }).type === 'api/compose')).toBe(false);
+    expect(h.session.getState().chips[0]!.state).toBe('lowConfidence');
+
+    h.session.confirmYes();
+    await flush();
+    await flush();
+    expect(h.sent.some((r) => (r as { type: string }).type === 'api/compose')).toBe(true);
+    expect(h.voice.spoken).toHaveLength(1);
+  });
+
+  it('waits for clips still being recognised, then composes them together', async () => {
+    let release!: (v: unknown) => void;
+    const signs = ['hello', 'please'];
+    let n = 0;
+    const h = harness({
+      recognize: () => {
+        const sign = signs[n++]!;
+        const answer = { ok: true, sign, confidence: 0.9, alternatives: [], latencyMs: 1 };
+        return n === 2 ? new Promise((r) => (release = () => r(answer))) : answer;
+      },
+    });
+    await h.session.turnOn();
+    const one: Segment[] = [
+      { kind: 'move', ms: 1000 },
+      { kind: 'still', ms: 700 },
+    ];
+    await h.feed([{ kind: 'still', ms: 200 }, ...one, ...one, { kind: 'none', ms: 2200 }]);
+    expect(h.sent.some((r) => (r as { type: string }).type === 'api/compose')).toBe(false); // second clip not answered yet
+    release(undefined);
+    await flush();
+    await flush();
+    await flush();
+    const compose = h.sent.find((r) => (r as { type: string }).type === 'api/compose') as {
+      signs: string[];
+    };
+    expect(compose.signs).toEqual(['hello', 'please']);
+  });
+
+  it('Audion’s voice switch: captions and transcript, but nothing sent to the call', async () => {
+    const h = harness();
+    h.session.setVoiceMuted(true);
+    await h.session.turnOn();
+    await h.feed(signAndPause);
+    await flush();
+    expect(sentSpeak(h)).toHaveLength(0);
+    expect(h.voice.spoken).toHaveLength(0);
+    expect(h.session.getState().caption).toBe('Hello, please wait.');
+    expect(h.voice.configs.at(-1)).toEqual({ enabled: true, voiceMuted: true });
+  });
+
+  it('turning On enables the voice channel; turning Off restores the plain microphone', async () => {
+    const h = harness();
+    await h.session.turnOn();
+    expect(h.voice.configs.at(-1)).toEqual({ enabled: true, voiceMuted: false });
+    h.session.turnOff();
+    expect(h.voice.configs.at(-1)).toEqual({ enabled: false, voiceMuted: false });
+  });
+
+  it('tells the signer to reload when Meet never gave Audion the microphone, and keeps the sentence', async () => {
+    const h = harness();
+    h.voice.result = 'no-channel';
+    await h.session.turnOn();
+    await h.feed(signAndPause);
+    await flush();
+    const s = h.session.getState();
+    expect(s.problems).toContain('voiceUnavailable');
+    expect(s.sentence).toBe('Hello, please wait.');
+    h.voice.result = 'done';
+    await h.session.speakNow();
+    expect(h.session.getState()).toMatchObject({ sentence: null });
+    expect(h.session.getState().problems).not.toContain('voiceUnavailable');
+  });
+
+  it('reports a failed compose or speak as Reconnecting and allows retry', async () => {
+    let fail = true;
+    const h = harness({
+      compose: () =>
+        fail ? { ok: false, error: { code: 'NETWORK', message: 'x', retryable: true } } : undefined,
+    });
+    h.settings.speakMode = 'confirm';
+    await h.session.turnOn();
+    await h.feed(signAndPause);
+    await flush();
+    expect(h.session.getState().problems).toContain('offline');
+    expect(h.session.getState().chips).toHaveLength(1);
+    fail = false;
+    await h.session.speakNow();
+    expect(h.session.getState().problems).not.toContain('offline');
+  });
+
+  it('surfaces Meet’s mute state from the voice channel', async () => {
+    const h = harness();
+    await h.session.turnOn();
+    h.voice.emitChannel({ hasChannel: true, micMuted: true });
+    expect(h.session.getState().micMuted).toBe(true);
+    h.voice.emitChannel({ hasChannel: true, micMuted: false });
+    expect(h.session.getState().micMuted).toBe(false);
+  });
+
+  it('posts to Meet chat only when the setting is on, and says so if it could not', async () => {
+    const h = harness();
+    await h.session.turnOn();
+    await h.feed(signAndPause);
+    await flush();
+    expect(h.chat).not.toHaveBeenCalled(); // default OFF
+
+    h.settings.postToChat = true;
+    h.chat.mockResolvedValueOnce('draft');
+    await h.feed(signAndPause);
+    await flush();
+    await flush();
+    expect(h.chat).toHaveBeenCalledWith('Hello, please wait.');
+    expect(h.session.getState().notice).toMatch(/draft/);
+  });
+
+  it('keeps the sign labels (never text or video) behind each spoken sentence for feedback', async () => {
+    const h = harness();
+    await h.session.turnOn();
+    await h.feed(signAndPause);
+    await flush();
+    expect(h.session.getSignLog()).toEqual(['hello']);
+    h.session.clearSignLog();
+    expect(h.session.getSignLog()).toEqual([]);
+  });
+
+  it('clears the caption after a few seconds', async () => {
+    vi.useFakeTimers();
+    const h = harness();
+    await h.session.turnOn();
+    for (const f of makeFrames(signAndPause)) await h.session.tick(f);
+    await vi.advanceTimersByTimeAsync(50);
+    expect(h.session.getState().caption).not.toBeNull();
+    await vi.advanceTimersByTimeAsync(5100);
+    expect(h.session.getState().caption).toBeNull();
   });
 });

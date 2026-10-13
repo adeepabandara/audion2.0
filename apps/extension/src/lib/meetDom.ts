@@ -66,3 +66,117 @@ export function locateControlBar(
 export function isMeetCallPath(pathname: string): boolean {
   return /^\/[a-z]{3}-[a-z]{4}-[a-z]{3}(\/|$)/i.test(pathname) || /^\/lookup\//.test(pathname);
 }
+
+// ---- Chat ------------------------------------------------------------------------------------------------
+
+const CHAT_TOGGLE = /^(chat with everyone|open chat|close chat|show chat|in-call messages)/i;
+const CHAT_INPUT = /send a message|message/i;
+const CHAT_SEND = /send/i;
+
+const visible = (el: Element) =>
+  !(el as HTMLElement).hidden && el.getAttribute('aria-hidden') !== 'true';
+
+export function findChatInput(
+  doc: Document = document,
+): HTMLTextAreaElement | HTMLInputElement | null {
+  const candidates = doc.querySelectorAll<HTMLTextAreaElement | HTMLInputElement>(
+    'textarea, input[type="text"]',
+  );
+  for (const el of candidates) {
+    const label = `${el.getAttribute('aria-label') ?? ''} ${el.getAttribute('placeholder') ?? ''}`;
+    if (CHAT_INPUT.test(label) && visible(el) && !el.closest('[hidden]')) return el;
+  }
+  return null;
+}
+
+export function findChatToggle(doc: Document = document): HTMLElement | null {
+  for (const el of doc.querySelectorAll<HTMLElement>(
+    'button[aria-label], [role="button"][aria-label]',
+  )) {
+    if (CHAT_TOGGLE.test(el.getAttribute('aria-label') ?? '')) return el;
+  }
+  return null;
+}
+
+function findChatSend(input: Element): HTMLButtonElement | null {
+  // Search outward from the input for the nearest container that holds a send button.
+  for (let el: Element | null = input.parentElement; el; el = el.parentElement) {
+    for (const b of el.querySelectorAll<HTMLButtonElement>('button[aria-label]')) {
+      if (CHAT_SEND.test(b.getAttribute('aria-label') ?? '')) return b;
+    }
+    if (el === input.ownerDocument.body) break;
+  }
+  return null;
+}
+
+export type ChatPostResult = 'sent' | 'draft' | 'no-chat' | 'failed';
+
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+async function waitFor<T>(get: () => T | null, timeoutMs: number, stepMs = 50): Promise<T | null> {
+  for (let waited = 0; ; waited += stepMs) {
+    const v = get();
+    if (v || waited >= timeoutMs) return v;
+    await sleep(stepMs);
+  }
+}
+
+/**
+ * Types `text` into Meet's chat and sends it. Opens the chat panel if needed and closes it again afterwards.
+ * Never overwrites something the user has already typed ('draft').
+ */
+export async function postToChat(
+  text: string,
+  doc: Document = document,
+  opts: { openWaitMs?: number } = {},
+): Promise<ChatPostResult> {
+  let input = findChatInput(doc);
+  let opened: HTMLElement | null = null;
+  if (!input) {
+    const toggle = findChatToggle(doc);
+    if (!toggle) return 'no-chat';
+    toggle.click();
+    opened = toggle;
+    input = await waitFor(() => findChatInput(doc), opts.openWaitMs ?? 1500);
+    if (!input) return 'no-chat';
+  }
+  const closeIfWeOpened = () => opened && (findChatToggle(doc) ?? opened).click();
+
+  if (input.value.trim()) {
+    closeIfWeOpened();
+    return 'draft';
+  }
+  // Set the value the way a user's typing would, so Meet's framework notices the change.
+  const proto =
+    input instanceof HTMLTextAreaElement
+      ? HTMLTextAreaElement.prototype
+      : HTMLInputElement.prototype;
+  Object.getOwnPropertyDescriptor(proto, 'value')?.set?.call(input, text);
+  input.dispatchEvent(new Event('input', { bubbles: true }));
+  await sleep(30);
+
+  const send = findChatSend(input);
+  if (!send || send.disabled) {
+    input.value = '';
+    closeIfWeOpened();
+    return 'failed';
+  }
+  send.click();
+  await sleep(30);
+  closeIfWeOpened();
+  return 'sent';
+}
+
+// ---- Leaving the call --------------------------------------------------------------------------------------
+
+/** Calls `cb` when the user clicks Meet's Leave call button. Returns an unsubscribe function. */
+export function watchLeaveCall(cb: () => void, doc: Document = document): () => void {
+  const onClick = (e: Event) => {
+    const el = (e.target as Element | null)?.closest?.(
+      'button[aria-label], [role="button"][aria-label]',
+    );
+    if (el && LEAVE.test(el.getAttribute('aria-label') ?? '')) cb();
+  };
+  doc.addEventListener('click', onClick, true); // capture: Meet may stop propagation
+  return () => doc.removeEventListener('click', onClick, true);
+}

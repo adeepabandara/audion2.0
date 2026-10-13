@@ -92,6 +92,21 @@ describe('api client', () => {
     expect(typeof (await local.get('installId'))).toBe('string');
   });
 
+  it('sends feedback as rating + sign labels and treats 204 as success', async () => {
+    const calls: Array<{ url: string; body: unknown }> = [];
+    const fetchImpl = (async (url: string | URL | Request, init?: RequestInit) => {
+      const u = String(url);
+      if (u.endsWith('/v1/session')) return json({ token: 't', expiresInSec: 900 });
+      calls.push({ url: u, body: JSON.parse(String(init?.body)) });
+      return new Response(null, { status: 204 });
+    }) as typeof fetch;
+    const api = createApiClient({ baseUrl: 'http://api', local: memoryStore(), fetchImpl });
+    expect(await api.feedback({ rating: 'down', signs: ['hello'] })).toEqual({ ok: true });
+    expect(calls).toEqual([
+      { url: 'http://api/v1/feedback', body: { rating: 'down', signs: ['hello'] } },
+    ]);
+  });
+
   it('turns API errors and network failures into typed failures', async () => {
     const local = memoryStore();
     const limited = (async (url: string | URL | Request) =>

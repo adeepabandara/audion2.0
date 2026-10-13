@@ -6,8 +6,9 @@ import { AudionSession, defaultDeps } from './session';
 export function createDefaultSession(trackerUrl: string, mountInto?: Node): AudionSession {
   const deps = defaultDeps(() => new IframeTracker(trackerUrl, mountInto));
   deps.settings = () => {
-    const { holdTimeMs, pauseMs } = getSettingsStore().useStore.getState().settings;
-    return { holdTimeMs, pauseMs };
+    const { holdTimeMs, pauseMs, speakMode, voiceId, speed, postToChat } =
+      getSettingsStore().useStore.getState().settings;
+    return { holdTimeMs, pauseMs, speakMode, voiceId, speed, postToChat };
   };
   return new AudionSession(deps);
 }

@@ -32,6 +32,7 @@ const BANNER_TONE: Record<Problem, 'warning' | 'error'> = {
   notRecognised: 'warning',
   lowLight: 'warning',
   handsOut: 'warning',
+  voiceUnavailable: 'warning',
 };
 
 function Guide() {
@@ -151,6 +152,8 @@ export interface PanelCardProps {
   state: MachineState;
   view: View;
   onToggle(on: boolean): void;
+  voiceMuted: boolean;
+  onVoiceMutedChange(muted: boolean): void;
   onCollapse(): void;
   onOpenSettings(): void;
   onOpenSigns(): void;
@@ -165,11 +168,30 @@ export interface PanelCardProps {
 
 /** Expanded panel (~320px). Composing and speaking arrive in M6; the sentence box stays empty until then. */
 export const PanelCard = forwardRef<HTMLElement, PanelCardProps>(function PanelCard(
-  { session, state, view, onToggle, onCollapse, onOpenSettings, onOpenSigns, style, dragHandlers },
+  {
+    session,
+    state,
+    view,
+    onToggle,
+    voiceMuted,
+    onVoiceMutedChange,
+    onCollapse,
+    onOpenSettings,
+    onOpenSigns,
+    style,
+    dragHandlers,
+  },
   ref,
 ) {
   const pending = pendingChip(state);
   const cameraBlocked = state.problems.includes('cameraBlocked');
+  const idle = !state.composing && !state.speaking;
+  const canSpeak =
+    state.on &&
+    idle &&
+    (state.sentence !== null || (state.chips.length > 0 && !pending && state.inFlight === 0));
+  const canCancel =
+    state.on && !state.speaking && (state.chips.length > 0 || state.sentence !== null);
   const label = (sign: string) => SIGN_LABEL[sign as keyof typeof SIGN_LABEL] ?? sign;
 
   return (
@@ -246,17 +268,38 @@ export const PanelCard = forwardRef<HTMLElement, PanelCardProps>(function PanelC
       </Popover>
 
       <div className="ap-sentence" aria-label="Sentence" aria-live="polite">
-        <span className="ap-note">Your sentence will appear here.</span>
+        {state.sentence !== null ? (
+          state.sentence
+        ) : state.composing ? (
+          <span className="ap-note">Writing your sentence…</span>
+        ) : (
+          <span className="ap-note">Your sentence will appear here.</span>
+        )}
       </div>
 
       <div className="ap-actions">
-        <Button icon="wave" disabled>
+        <Button icon="wave" disabled={!canSpeak} onClick={() => void session.speakNow()}>
           Speak
         </Button>
-        <Button variant="secondary" disabled={state.chips.length === 0} onClick={session.clear}>
+        <Button variant="secondary" disabled={!canCancel} onClick={session.clear}>
           Cancel
         </Button>
       </div>
+
+      <Toggle
+        label="Speak into the call"
+        checked={!voiceMuted}
+        onCheckedChange={(on) => onVoiceMutedChange(!on)}
+      />
+      {state.on && state.micMuted && !voiceMuted && (
+        <Banner tone="info">
+          Your Meet microphone is muted, so others can’t hear Audion. Unmute it in Meet.
+        </Banner>
+      )}
+      {voiceMuted && state.on && (
+        <Banner tone="info">Audion’s voice is off. Sentences appear as captions only.</Banner>
+      )}
+      {state.notice && <Banner tone="info">{state.notice}</Banner>}
 
       <footer className="ap-foot">
         <Button variant="ghost" icon="gear" iconOnly onClick={onOpenSettings}>

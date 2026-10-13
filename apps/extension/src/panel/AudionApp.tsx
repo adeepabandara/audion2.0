@@ -1,12 +1,15 @@
 import { ThemeRoot } from '@audion/ui';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { locateControlBar, isMeetCallPath } from '../lib/meetDom';
+import { isMeetCallPath, locateControlBar, watchLeaveCall } from '../lib/meetDom';
+import { send, type TranscriptEntry } from '../lib/messages';
 import { getSettingsStore } from '../lib/settings';
 import { pendingChip, viewOf } from './machine';
+import { CaptionBar } from './CaptionBar';
 import { PanelCard } from './PanelCard';
 import { Pill } from './Pill';
 import { SettingsDrawer } from './SettingsDrawer';
 import { SignsSheet } from './SignsSheet';
+import { SummaryCard } from './SummaryCard';
 import {
   barClearance,
   clampPosition,
@@ -69,9 +72,12 @@ export function AudionApp({
 }: AudionAppProps) {
   const settings = getSettingsStore();
   const usePanel = panelStore.useStore;
-  const theme = settings.useStore((s) => s.settings.theme);
-  const { expanded, position, drawer, ready } = usePanel();
-  const { setExpanded, setPosition, openDrawer, closeDrawer } = usePanel.getState();
+  const { theme, displayName, captionSize, captionPosition, feedbackConsent } = settings.useStore(
+    (s) => s.settings,
+  );
+  const { expanded, position, drawer, ready, voiceMuted } = usePanel();
+  const { setExpanded, setPosition, setVoiceMuted, openDrawer, closeDrawer } = usePanel.getState();
+  const [summary, setSummary] = useState<TranscriptEntry[] | null>(null);
   const machine = useSessionState(session);
   const view = viewOf(machine);
 
@@ -88,6 +94,22 @@ export function AudionApp({
 
   // Camera and tracker run only while Audion is On and the page is in use.
   useEffect(() => () => session.turnOff(), [session]);
+
+  useEffect(() => session.setVoiceMuted(voiceMuted), [voiceMuted, session]);
+
+  // End of call: offer the transcript (kept in the service worker's memory) while the tab is still here.
+  const showSummary = useCallback(async () => {
+    const res = await send({ type: 'transcript/get' });
+    if (res.ok && res.entries.length) setSummary(res.entries);
+  }, []);
+  useEffect(
+    () =>
+      watchLeaveCall(() => {
+        session.turnOff();
+        void showSummary();
+      }),
+    [session, showSummary],
+  );
 
   const clearance = useBarClearance();
   const onCall = useOnCallPage(alwaysShow);
@@ -117,58 +139,107 @@ export function AudionApp({
     },
   });
 
-  // Leaving the call page (SPA navigation) switches Audion off and releases the camera.
+  // Leaving the call page (SPA navigation) switches Audion off, releases the camera and offers the transcript.
+  const wasOnCall = useRef(onCall);
   useEffect(() => {
-    if (!onCall) session.turnOff();
-  }, [onCall, session]);
+    if (wasOnCall.current && !onCall) {
+      session.turnOff();
+      void showSummary();
+    }
+    wasOnCall.current = onCall;
+  }, [onCall, session, showSummary]);
 
-  if (!ready || !onCall) return null;
+  if (!ready || (!onCall && !summary)) return null;
 
   const toggle = (on: boolean) => (on ? void session.turnOn() : session.turnOff());
+  const closeSummary = () => {
+    void send({ type: 'transcript/clear' });
+    session.clearSignLog();
+    setSummary(null);
+  };
 
   return (
     <ThemeRoot theme={theme} portalContainer={portalContainer} className="ap-layer">
-      {/* Analysis source for the tracker and the light check; the visible preview is inside the card. */}
-      <video
-        ref={(el) => session.attachVideo(el)}
-        className="ap-hidden-video"
-        muted
-        playsInline
-        autoPlay
-        aria-hidden="true"
-      />
-      {expanded ? (
-        <PanelCard
-          ref={cardRef}
-          session={session}
-          state={machine}
-          view={view}
-          onToggle={toggle}
-          onCollapse={() => setExpanded(false)}
-          onOpenSettings={() => openDrawer('settings')}
-          onOpenSigns={() => openDrawer('signs')}
-          style={{ right: shown.right, bottom: shown.bottom }}
-          dragHandlers={drag}
-        />
-      ) : (
-        <Pill
-          status={view.status}
-          label={view.label}
-          enabled={machine.on}
-          onToggle={toggle}
-          onExpand={() => setExpanded(true)}
-          style={{ right: EDGE_MARGIN * 2, bottom: clearance }}
+      {onCall && (
+        <>
+          {/* Analysis source for the tracker and the light check; the visible preview is inside the card. */}
+          <video
+            ref={(el) => session.attachVideo(el)}
+            className="ap-hidden-video"
+            muted
+            playsInline
+            autoPlay
+            aria-hidden="true"
+          />
+          {expanded ? (
+            <PanelCard
+              ref={cardRef}
+              session={session}
+              state={machine}
+              view={view}
+              onToggle={toggle}
+              voiceMuted={voiceMuted}
+              onVoiceMutedChange={setVoiceMuted}
+              onCollapse={() => setExpanded(false)}
+              onOpenSettings={() => openDrawer('settings')}
+              onOpenSigns={() => openDrawer('signs')}
+              style={{
+                right: shown.right,
+                bottom: shown.bottom,
+                // Never taller than the space above the control bar: scroll inside instead.
+                maxHeight: Math.max(200, innerHeight - shown.bottom - EDGE_MARGIN),
+              }}
+              dragHandlers={drag}
+            />
+          ) : (
+            <Pill
+              status={view.status}
+              label={view.label}
+              enabled={machine.on}
+              onToggle={toggle}
+              onExpand={() => setExpanded(true)}
+              style={{ right: EDGE_MARGIN * 2, bottom: clearance }}
+            />
+          )}
+          {machine.caption && (
+            <CaptionBar
+              name={displayName || 'You'}
+              text={machine.caption}
+              speaking={machine.speaking}
+              size={captionSize}
+              position={captionPosition}
+              clearance={clearance}
+            />
+          )}
+          <SettingsDrawer
+            open={drawer === 'settings'}
+            onOpenChange={(o) => (o ? openDrawer('settings') : closeDrawer())}
+            onShowSigns={() => openDrawer('signs')}
+          />
+          <SignsSheet
+            open={drawer === 'signs'}
+            onOpenChange={(o) => (o ? openDrawer('signs') : closeDrawer())}
+          />
+        </>
+      )}
+      {summary && (
+        <SummaryCard
+          entries={summary}
+          feedbackConsent={feedbackConsent}
+          onCopy={async (text) => {
+            try {
+              await navigator.clipboard.writeText(text);
+              return true;
+            } catch {
+              return false;
+            }
+          }}
+          onFeedback={async (rating) =>
+            (await send({ type: 'api/feedback', rating, signs: session.getSignLog() })).ok
+          }
+          onClose={closeSummary}
         />
       )}
-      <SettingsDrawer
-        open={drawer === 'settings'}
-        onOpenChange={(o) => (o ? openDrawer('settings') : closeDrawer())}
-        onShowSigns={() => openDrawer('signs')}
-      />
-      <SignsSheet
-        open={drawer === 'signs'}
-        onOpenChange={(o) => (o ? openDrawer('signs') : closeDrawer())}
-      />
     </ThemeRoot>
   );
 }

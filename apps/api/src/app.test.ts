@@ -216,6 +216,24 @@ describe('POST /v1/speak', () => {
   });
 });
 
+describe('POST /v1/feedback', () => {
+  it('accepts a rating with sign labels, and nothing else', async () => {
+    ({ app } = await makeApp());
+    const token = await getToken(app);
+    const post = (payload: Record<string, unknown>) =>
+      app.inject({ method: 'POST', url: '/v1/feedback', headers: auth(token), payload });
+    expect((await post({ rating: 'up', signs: ['hello', 'wait'] })).statusCode).toBe(204);
+    expect((await post({ rating: 'meh', signs: [] })).statusCode).toBe(400);
+    expect((await post({ rating: 'down', signs: ['not-a-sign'] })).statusCode).toBe(400);
+    const none = await app.inject({
+      method: 'POST',
+      url: '/v1/feedback',
+      payload: { rating: 'up', signs: [] },
+    });
+    expect(none.statusCode).toBe(401);
+  });
+});
+
 describe('limits and origins', () => {
   it('rate limits per IP with RATE_LIMITED', async () => {
     ({ app } = await makeApp({ SESSION_LIMIT_PER_IP_PER_MIN: '2' }));
