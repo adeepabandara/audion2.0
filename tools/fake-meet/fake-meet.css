@@ -1,0 +1,150 @@
+:root {
+  color-scheme: dark;
+}
+* {
+  box-sizing: border-box;
+}
+body {
+  margin: 0;
+  height: 100vh;
+  background: #202124;
+  color: #e8eaed;
+  font:
+    14px/1.4 system-ui,
+    sans-serif;
+  overflow: hidden;
+}
+.stage {
+  position: absolute;
+  inset: 0 0 80px 0;
+  padding: 16px;
+}
+.grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 12px;
+  height: 100%;
+}
+.tile {
+  position: relative;
+  background: #3c4043;
+  border-radius: 12px;
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+}
+.tile video {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  transform: scaleX(-1);
+  display: none;
+}
+.avatar {
+  width: 72px;
+  height: 72px;
+  border-radius: 50%;
+  background: #5f6368;
+  display: grid;
+  place-items: center;
+  font-size: 32px;
+}
+.name {
+  position: absolute;
+  left: 12px;
+  bottom: 10px;
+  font-size: 13px;
+}
+.controls {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 80px;
+  display: flex;
+  gap: 12px;
+  justify-content: center;
+  align-items: center;
+  background: #202124;
+}
+.controls button {
+  min-width: 56px;
+  height: 48px;
+  border: 0;
+  border-radius: 24px;
+  background: #3c4043;
+  color: inherit;
+  cursor: pointer;
+  padding: 0 16px;
+}
+.controls button[aria-pressed='false'] {
+  background: #8c2f27;
+}
+.controls .join {
+  background: #8ab4f8;
+  color: #202124;
+}
+.controls .leave {
+  background: #d93025;
+}
+.captions {
+  position: fixed;
+  left: 50%;
+  bottom: 96px;
+  transform: translateX(-50%);
+  max-width: 640px;
+  background: rgba(0, 0, 0, 0.75);
+  padding: 8px 14px;
+  border-radius: 8px;
+}
+.chat {
+  position: fixed;
+  right: 16px;
+  top: 16px;
+  bottom: 96px;
+  width: 300px;
+  background: #fff;
+  color: #202124;
+  border-radius: 12px;
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+}
+.chat[hidden],
+.captions[hidden] {
+  display: none;
+}
+.chat ol {
+  flex: 1;
+  overflow: auto;
+  margin: 8px 0;
+  padding-left: 18px;
+}
+.chat textarea {
+  width: 100%;
+  height: 56px;
+}
+.meter {
+  position: fixed;
+  left: 16px;
+  bottom: 28px;
+  width: 120px;
+  height: 10px;
+  background: #3c4043;
+  border-radius: 5px;
+  overflow: hidden;
+}
+.meter i {
+  display: block;
+  height: 100%;
+  width: 0;
+  background: #81c995;
+  transition: width 80ms linear;
+}
+@media (prefers-reduced-motion: reduce) {
+  .meter i {
+    transition: none;
+  }
+}

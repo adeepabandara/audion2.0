@@ -1,0 +1,12 @@
+{
+  "name": "@audion/fake-meet",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "node server.mjs",
+    "build": "echo \"fake-meet is static; nothing to build\"",
+    "typecheck": "echo ok",
+    "test": "echo \"no tests\""
+  }
+}
