@@ -32,6 +32,8 @@ export interface Config {
   confidenceThreshold: number;
   mockLowConfidenceRate: number;
   jwtSecret: string;
+  /** False when JWT_SECRET was not provided and the development default is in use. */
+  jwtSecretFromEnv: boolean;
   allowedOrigins: string[];
   limits: { perIp: number; perInstall: number; sessionPerIp: number };
 }
@@ -47,6 +49,7 @@ export function loadConfig(env: Record<string, string | undefined> = process.env
     confidenceThreshold: e.CONFIDENCE_THRESHOLD,
     mockLowConfidenceRate: e.MOCK_LOW_CONFIDENCE_RATE,
     jwtSecret: e.JWT_SECRET,
+    jwtSecretFromEnv: env.JWT_SECRET !== undefined && env.JWT_SECRET !== '',
     allowedOrigins: e.ALLOWED_ORIGINS.split(',')
       .map((s) => s.trim())
       .filter(Boolean),
@@ -56,4 +59,29 @@ export function loadConfig(env: Record<string, string | undefined> = process.env
       sessionPerIp: e.SESSION_LIMIT_PER_IP_PER_MIN,
     },
   };
+}
+
+/**
+ * Settings that are fine for development but dangerous in production. Live mode (MOCK=0) refuses to start on
+ * `errors` and prints `warnings`.
+ */
+export function checkLiveConfig(config: Config): { errors: string[]; warnings: string[] } {
+  const errors: string[] = [];
+  const warnings: string[] = [];
+  if (!config.gcpProject) errors.push('GCP_PROJECT is required when MOCK=0 (or run with MOCK=1).');
+  if (!config.jwtSecretFromEnv) {
+    errors.push(
+      'JWT_SECRET must be set when MOCK=0 (use a Secret Manager secret); the development default is public.',
+    );
+  }
+  if (config.allowedOrigins.length === 0) {
+    errors.push(
+      'ALLOWED_ORIGINS must be set when MOCK=0, e.g. chrome-extension://<your-extension-id>. With it empty every request is rejected.',
+    );
+  } else if (config.allowedOrigins.includes('*')) {
+    warnings.push(
+      'ALLOWED_ORIGINS=* accepts any origin. Fine for local testing, not for production.',
+    );
+  }
+  return { errors, warnings };
 }

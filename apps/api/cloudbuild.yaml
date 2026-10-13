@@ -1,0 +1,10 @@
+# Builds the API image only (no deploy, no IAM). Run from the repo root:
+#   gcloud builds submit --config apps/api/cloudbuild.yaml \
+#     --substitutions _IMAGE=us-central1-docker.pkg.dev/PROJECT/REPO/audion-api:TAG .
+steps:
+  - name: gcr.io/cloud-builders/docker
+    args: ['build', '-f', 'apps/api/Dockerfile', '-t', '${_IMAGE}', '.']
+images:
+  - '${_IMAGE}'
+substitutions:
+  _IMAGE: ''

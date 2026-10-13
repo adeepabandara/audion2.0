@@ -1,0 +1,15 @@
+**/node_modules
+**/dist
+**/.output
+**/.wxt
+**/storybook-static
+.git
+.env
+.env.*
+!.env.example
+*.webm
+*.mp4
+*.jsonl
+tools
+apps/extension
+packages/ui
