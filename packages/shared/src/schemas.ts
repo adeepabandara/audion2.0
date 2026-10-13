@@ -1,0 +1,74 @@
+import { z } from 'zod';
+import { MAX_COMPOSE_SIGNS, MAX_SPEAK_CHARS, MAX_SPEED, MIN_SPEED } from './constants.js';
+import { SIGNS } from './signs.js';
+import { VOICE_IDS } from './voices.js';
+
+export const signOrUnknownSchema = z.enum([...SIGNS, 'unknown']);
+export const signSchema = z.enum(SIGNS);
+
+export const ERROR_CODES = [
+  'RATE_LIMITED',
+  'CLIP_TOO_LARGE',
+  'MODEL_UNAVAILABLE',
+  'BAD_REQUEST',
+  'UNAUTHENTICATED',
+] as const;
+export const errorCodeSchema = z.enum(ERROR_CODES);
+export type ErrorCode = z.infer<typeof errorCodeSchema>;
+
+export const errorResponseSchema = z.object({
+  error: z.object({
+    code: errorCodeSchema,
+    message: z.string(),
+    retryable: z.boolean(),
+  }),
+});
+export type ErrorResponse = z.infer<typeof errorResponseSchema>;
+
+// POST /v1/session
+export const sessionRequestSchema = z.object({ installId: z.string().uuid() });
+export type SessionRequest = z.infer<typeof sessionRequestSchema>;
+export const sessionResponseSchema = z.object({
+  token: z.string(),
+  expiresInSec: z.number().int().positive(),
+});
+export type SessionResponse = z.infer<typeof sessionResponseSchema>;
+
+// POST /v1/recognize (multipart: clip file, field `mime`)
+export const recognizeFieldsSchema = z.object({ mime: z.string().regex(/^video\/[a-z0-9.+-]+$/i) });
+export const candidateSchema = z.object({
+  sign: signOrUnknownSchema,
+  confidence: z.number().min(0).max(1),
+});
+export const recognizeResponseSchema = z.object({
+  sign: signOrUnknownSchema,
+  /** null when the model gives no logprobs: never invent a number. */
+  confidence: z.number().min(0).max(1).nullable(),
+  alternatives: z.array(candidateSchema),
+  latencyMs: z.number().nonnegative(),
+});
+export type RecognizeResponse = z.infer<typeof recognizeResponseSchema>;
+
+// POST /v1/compose
+export const composeRequestSchema = z.object({
+  signs: z.array(z.string().min(1).max(40)).min(1).max(MAX_COMPOSE_SIGNS),
+  tone: z.enum(['neutral', 'polite']).optional(),
+});
+export type ComposeRequest = z.infer<typeof composeRequestSchema>;
+export const composeResponseSchema = z.object({ sentence: z.string().min(1) });
+export type ComposeResponse = z.infer<typeof composeResponseSchema>;
+
+// POST /v1/speak
+export const speakRequestSchema = z.object({
+  text: z.string().min(1).max(MAX_SPEAK_CHARS),
+  voiceId: z.enum(VOICE_IDS),
+  speed: z.number().min(MIN_SPEED).max(MAX_SPEED),
+});
+export type SpeakRequest = z.infer<typeof speakRequestSchema>;
+
+// GET /healthz
+export const healthResponseSchema = z.object({
+  ok: z.literal(true),
+  mode: z.enum(['live', 'mock']),
+});
+export type HealthResponse = z.infer<typeof healthResponseSchema>;
