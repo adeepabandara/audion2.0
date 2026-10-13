@@ -137,3 +137,8 @@ M0 foundations · M1 API + mock + fake-meet · M2 design system/Storybook · M3 
 - Rate limiting is an in-memory fixed window (per instance). Fine for demo traffic; revisit before scaling Cloud Run beyond one instance.
 - Logs: Pino redacts Authorization/cookie, including the multipart plugin's trace-level header log (found by `privacy.test.ts`).
 - Demo: `pnpm build && apps/api/scripts/demo.sh`. Fake Meet: `pnpm --filter @audion/fake-meet dev` (http://localhost:4173).
+- `packages/ui` is consumed as TS source (`@audion/ui`, CSS via `@audion/ui/styles.css`). Plain CSS with `--au-*` tokens on `.au-root`, not Tailwind (approved but unnecessary here: one compiled stylesheet drops cleanly into a Shadow root). Tailwind may still be used for extension pages.
+- Theme: `<ThemeRoot theme="system|light|dark">`. Overlays (Popover, Drawer, Tooltip) go through `ThemedPortal`, which re-wraps content in `.au-root`, so tokens work when portaled. Inside the Shadow DOM pass `portalContainer` (an element in the shadow root).
+- Token colours: error text on dark is `#F87171` (`#EF4444` fails AA on raised surfaces). Danger buttons use a separate solid `--au-danger #B91C1C` with white text. `contrast.test.ts` checks every pair in both themes and that the system-dark media block equals the dark block.
+- A11y gate: `stories.a11y.test.tsx` runs axe over every story in light and dark (jsdom, so no colour-contrast rule; contrast is the token test plus the Storybook a11y addon in the browser). Add a story for every new component or state.
+- Buttons must stay `forwardRef` (Radix `asChild`). Fonts: Inter if present, else system stack; no remote font loading (MV3). Storybook: `pnpm --filter @audion/ui storybook`.
