@@ -22,6 +22,7 @@ export default tseslint.config(
     },
   },
   { files: ['tools/fake-meet/*.js'], languageOptions: { globals: globals.browser } },
+  { files: ['tools/eval/src/cli.ts'], rules: { 'no-console': 'off' } }, // a CLI prints its report
   {
     files: ['**/*.mjs'],
     languageOptions: { globals: globals.node },
