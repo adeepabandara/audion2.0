@@ -202,3 +202,79 @@ describe('every state has an icon, a label and a live announcement', () => {
     expect(viewOf({ ...s, problems: ['handsOut', 'lowLight'] }).problem).toBe('lowLight');
   });
 });
+
+describe('composing, speaking and captions', () => {
+  const withChips = (...signs: Array<'hello' | 'tomorrow'>) =>
+    run([
+      ...on(),
+      ...signs.flatMap((sign) => [{ type: 'CLIP_READY' } as const, recognised(sign, 0.9)]),
+    ]);
+
+  it('only the signs that made the sentence are cleared once it is spoken', () => {
+    let s = withChips('hello');
+    s = reduce(s, { type: 'COMPOSE_START' });
+    // A new sign arrives while the sentence is still being written and spoken.
+    s = run([{ type: 'CLIP_READY' }, recognised('tomorrow', 0.9)], s);
+    s = run(
+      [{ type: 'COMPOSED', sentence: 'Hello.' }, { type: 'SPEAK_START' }, { type: 'SPOKEN' }],
+      s,
+    );
+    expect(s.chips.map((c) => c.sign)).toEqual(['tomorrow']);
+    expect(s.sentence).toBeNull();
+  });
+
+  it('shows the caption from the start of speech until it is cleared', () => {
+    let s = run(
+      [{ type: 'COMPOSE_START' }, { type: 'COMPOSED', sentence: 'Hello.' }],
+      withChips('hello'),
+    );
+    expect(s.caption).toBeNull();
+    s = reduce(s, { type: 'SPEAK_START' });
+    expect(s.caption).toBe('Hello.');
+    s = reduce(s, { type: 'SPOKEN' });
+    expect(s.caption).toBe('Hello.'); // lingers for a few seconds
+    expect(reduce(s, { type: 'CAPTION_CLEAR' }).caption).toBeNull();
+  });
+
+  it('keeps the sentence when speaking fails so the signer can retry, and says why', () => {
+    const base = run(
+      [
+        { type: 'COMPOSE_START' },
+        { type: 'COMPOSED', sentence: 'Hello.' },
+        { type: 'SPEAK_START' },
+      ],
+      withChips('hello'),
+    );
+    const noVoice = reduce(base, { type: 'SPEAK_FAILED', reason: 'noChannel' });
+    expect(noVoice.sentence).toBe('Hello.');
+    expect(noVoice.speaking).toBe(false);
+    expect(viewOf(noVoice)).toMatchObject({
+      label: 'Voice not connected',
+      problem: 'voiceUnavailable',
+    });
+    expect(viewOf(noVoice).hint).toMatch(/Reload this Meet tab/);
+    expect(reduce(base, { type: 'SPEAK_FAILED', reason: 'network' }).problems).toContain('offline');
+    // Trying again clears the voice problem.
+    expect(reduce(noVoice, { type: 'SPEAK_START' }).problems).not.toContain('voiceUnavailable');
+  });
+
+  it('tracks Meet’s mute state and notices, and Cancel drops the sentence and its signs', () => {
+    expect(reduce(initialMachine(), { type: 'MIC_MUTED', muted: true }).micMuted).toBe(true);
+    expect(reduce(initialMachine(), { type: 'NOTICE', text: 'x' }).notice).toBe('x');
+    const s = run(
+      [{ type: 'COMPOSE_START' }, { type: 'COMPOSED', sentence: 'Hello.' }, { type: 'CLEAR' }],
+      withChips('hello'),
+    );
+    expect(s).toMatchObject({ sentence: null, chips: [], sentenceIds: [] });
+  });
+
+  it('a failed compose returns to chips and flags the problem', () => {
+    const s = run(
+      [{ type: 'COMPOSE_START' }, { type: 'COMPOSE_FAILED', retryable: true }],
+      withChips('hello'),
+    );
+    expect(phaseOf(s)).toBe('chips');
+    expect(s.chips).toHaveLength(1);
+    expect(s.problems).toContain('offline');
+  });
+});

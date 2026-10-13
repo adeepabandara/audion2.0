@@ -125,6 +125,14 @@ export function createApiClient({
       return { ok: true as const, ...recognizeResponseSchema.parse(await res.json()) };
     },
 
+    async feedback(req: {
+      rating: 'up' | 'down';
+      signs: string[];
+    }): Promise<{ ok: true } | Failure> {
+      const res = await authed('/v1/feedback', (t) => json(t, req));
+      return isFailure(res) ? res : { ok: true };
+    },
+
     async compose(req: ComposeRequest) {
       const res = await authed('/v1/compose', (t) => json(t, req));
       if (isFailure(res)) return res;

@@ -1,35 +1,31 @@
 // Dev harness: mounts Audion into a Shadow root on the fake-meet page, exactly as the content script does,
 // but without the extension runtime: a small shim answers chrome.runtime.sendMessage by calling the API
-// directly, and storage falls back to localStorage. For fast UI iteration and real-browser checks.
+// directly, and storage falls back to localStorage. The MAIN-world inject script is installed here too
+// (same window), so fake-meet's own getUserMedia call gets Audion's mixed microphone track.
 //   pnpm --filter @audion/extension build   (builds the tracker page + MediaPipe assets the harness serves)
 //   pnpm --filter @audion/extension harness
-// URL flags: ?fakecam=1 swaps getUserMedia for an animated canvas stream (no camera needed).
+// URL flags: ?fakecam=1 swaps video getUserMedia for an animated canvas stream, ?fakemic=1 swaps audio for a
+// silent oscillator-free stream (no real devices needed).
 import ui from '@audion/ui/styles.css?inline';
 import { createRoot } from 'react-dom/client';
 import { createMessageHandler } from '../src/background/handler';
+import { installInject } from '../src/inject/install';
 import { createApiClient } from '../src/lib/api';
 import type { Request } from '../src/lib/messages';
-import { localStorageStore } from '../src/lib/storage';
+import { localStorageStore, memoryStore } from '../src/lib/storage';
 import { AudionApp } from '../src/panel/AudionApp';
 import { createDefaultSession } from '../src/panel/defaultSession';
 import panel from '../src/panel/panel.css?inline';
 import { makeFrames, type Segment } from '../src/testing/fixtures';
 
-const api = createApiClient({
-  baseUrl: import.meta.env.VITE_API_URL,
-  local: localStorageStore('audion:local:'),
-});
-const handle = createMessageHandler(api, async () =>
-  console.warn('harness: would open chrome camera settings'),
-);
-(window as unknown as { chrome: unknown }).chrome = {
-  runtime: { id: 'harness', sendMessage: (req: Request) => handle(req) },
-};
+const flags = new URLSearchParams(location.search);
 
-if (new URLSearchParams(location.search).has('fakecam')) {
-  const real = navigator.mediaDevices.getUserMedia.bind(navigator.mediaDevices);
-  navigator.mediaDevices.getUserMedia = async (c) => {
-    if (!c?.video) return real(c);
+// Fake devices go in BEFORE the inject script wraps getUserMedia, exactly where the real devices would be.
+const md = navigator.mediaDevices;
+const realGum = md.getUserMedia.bind(md);
+md.getUserMedia = async (c) => {
+  const tracks: MediaStreamTrack[] = [];
+  if (c?.video && flags.has('fakecam')) {
     const canvas = document.createElement('canvas');
     canvas.width = 640;
     canvas.height = 480;
@@ -43,9 +39,33 @@ if (new URLSearchParams(location.search).has('fakecam')) {
       g.arc(320 + Math.sin(n++ / 10) * 120, 240, 60, 0, Math.PI * 2);
       g.fill();
     }, 33);
-    return canvas.captureStream(30);
-  };
-}
+    tracks.push(...canvas.captureStream(30).getVideoTracks());
+  } else if (c?.video) {
+    return realGum(c);
+  }
+  if (c?.audio && flags.has('fakemic')) {
+    const ctx = new AudioContext();
+    const dest = ctx.createMediaStreamDestination(); // silent "microphone"
+    tracks.push(...dest.stream.getAudioTracks());
+  } else if (c?.audio) {
+    return realGum(c);
+  }
+  return new MediaStream(tracks);
+};
+installInject();
+
+const api = createApiClient({
+  baseUrl: import.meta.env.VITE_API_URL,
+  local: localStorageStore('audion:local:'),
+});
+const handle = createMessageHandler(
+  api,
+  async () => console.warn('harness: would open chrome camera settings'),
+  memoryStore(), // transcript, like the service worker's session storage
+);
+(window as unknown as { chrome: unknown }).chrome = {
+  runtime: { id: 'harness', sendMessage: (req: Request) => handle(req, { tabId: 'harness' }) },
+};
 
 const host = document.createElement('div');
 document.body.append(host);

@@ -29,7 +29,6 @@
 }
 .ap-card {
   width: 336px; /* ~320 of content once a scrollbar appears on short windows */
-  max-height: calc(100vh - 16px);
   overflow-x: hidden;
   overflow-y: auto;
   display: grid;
@@ -73,7 +72,7 @@
   place-items: center;
   align-content: center;
   gap: 6px;
-  aspect-ratio: 4 / 3;
+  aspect-ratio: 3 / 2;
   border-radius: var(--au-radius-md);
   background: var(--au-surface);
   border: 1px solid var(--au-divider);
@@ -206,4 +205,54 @@
 }
 .ap-stack .ap-actions > * {
   flex: 0 1 auto;
+}
+
+/* Caption bar */
+.ap-caption {
+  position: fixed;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  max-width: min(760px, 92vw);
+  padding: 10px 16px;
+  border-radius: 8px;
+  background: rgb(0 0 0 / 80%);
+  color: #fff;
+  font-weight: 500;
+  line-height: 1.35;
+  pointer-events: none; /* never get between the signer and Meet */
+}
+.ap-caption__who {
+  font-weight: 700;
+  color: #fff;
+  white-space: nowrap;
+}
+.ap-caption .au-icon {
+  color: #2dd4bf;
+}
+
+/* Call summary */
+.ap-summary {
+  position: fixed;
+  right: 16px;
+  bottom: 96px;
+  width: 360px;
+  max-height: calc(100vh - 128px);
+  overflow-y: auto;
+  display: grid;
+  gap: 12px;
+}
+.ap-transcript {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 6px;
+}
+.ap-feedback {
+  display: flex;
+  align-items: center;
+  gap: 8px;
 }

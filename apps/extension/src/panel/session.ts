@@ -6,7 +6,8 @@ import {
   sampleVideoLuminance,
 } from '../lib/camera';
 import { handsNearEdge, type LandmarkFrame } from '../lib/landmarks';
-import { send as realSend, toBase64, type Request } from '../lib/messages';
+import { postToChat, type ChatPostResult } from '../lib/meetDom';
+import { fromBase64, send as realSend, toBase64, type Request } from '../lib/messages';
 import {
   createRecognitionQueue,
   type ClipJob,
@@ -22,7 +23,14 @@ import {
   type SegmenterState,
 } from '../lib/segmenter';
 import type { HandTracker } from '../lib/trackerClient';
-import { initialMachine, reduce, type MachineEvent, type MachineState } from './machine';
+import { VoiceBridge, type VoiceChannel } from '../lib/voiceBridge';
+import {
+  initialMachine,
+  pendingChip,
+  reduce,
+  type MachineEvent,
+  type MachineState,
+} from './machine';
 
 export interface SessionDeps {
   tracker: HandTracker;
@@ -31,7 +39,14 @@ export interface SessionDeps {
     stream: MediaStream,
   ): Pick<ClipRecorder, 'arm' | 'disarm' | 'signStarted' | 'finish'>;
   send(req: Request): Promise<unknown>;
-  settings(): Pick<Settings, 'holdTimeMs' | 'pauseMs'>;
+  settings(): Pick<
+    Settings,
+    'holdTimeMs' | 'pauseMs' | 'speakMode' | 'voiceId' | 'speed' | 'postToChat'
+  >;
+  /** Voice into the call: the MAIN-world inject script behind a postMessage bridge. */
+  voice: VoiceChannel;
+  /** Post a sentence to Meet chat (setting: postToChat). */
+  chat(text: string): Promise<ChatPostResult>;
   luminance(video: HTMLVideoElement): number | null;
   now(): number;
   /** Time source for the capture loop and timers; replaced in tests. */
@@ -47,7 +62,16 @@ export function defaultDeps(trackerFor: () => HandTracker): SessionDeps {
     getCamera: () => navigator.mediaDevices.getUserMedia(CAMERA_CONSTRAINTS),
     createRecorder: (stream) => new ClipRecorder(stream),
     send: realSend as SessionDeps['send'],
-    settings: () => ({ holdTimeMs: 400, pauseMs: 1500 }),
+    settings: () => ({
+      holdTimeMs: 400,
+      pauseMs: 1500,
+      speakMode: 'auto',
+      voiceId: 'aria',
+      speed: 1,
+      postToChat: false,
+    }),
+    voice: new VoiceBridge(),
+    chat: (text) => postToChat(text),
     luminance: sampleVideoLuminance,
     now: () => performance.now(),
     setInterval: (fn, ms) => setInterval(fn, ms),
@@ -61,6 +85,8 @@ const FRAME_INTERVAL_MS = 66; // ~15 fps
 const LIGHT_EVERY_MS = 500;
 const EDGE_FRAMES = 3;
 const NOT_RECOGNISED_MS = 4000;
+const CAPTION_MS = 5000;
+const NOTICE_MS = 6000;
 
 type Listener = (s: MachineState) => void;
 
@@ -88,6 +114,13 @@ export class AudionSession {
   private edgeStreak = 0;
   private notEdgeStreak = 0;
   private dismissTimer: unknown;
+  private captionTimer: unknown;
+  private noticeTimer: unknown;
+  private voiceMuted = false;
+  private pauseSeen = false;
+  private sentenceSigns: string[] = [];
+  private signLog: string[] = [];
+  private offChannel: (() => void) | null = null;
 
   constructor(private readonly deps: SessionDeps) {}
 
@@ -113,6 +146,16 @@ export class AudionSession {
   dispatch = (e: MachineEvent): void => {
     this.state = reduce(this.state, e);
     this.listeners.forEach((l) => l(this.state));
+    // Once everything pending is settled, a sentence the signer already paused for can be composed.
+    if (
+      this.pauseSeen &&
+      (e.type === 'RECOGNISED' ||
+        e.type === 'RECOGNISE_FAILED' ||
+        e.type === 'CONFIRM_YES' ||
+        e.type === 'CONFIRM_RETRY')
+    ) {
+      queueMicrotask(() => void this.maybeCompose());
+    }
   };
 
   /** The panel's preview <video>; the session feeds the camera into it and samples frames from it. */
@@ -188,6 +231,10 @@ export class AudionSession {
       },
       onOnline: (online) => this.dispatch({ type: 'ONLINE', online }),
     });
+    this.deps.voice.configure({ enabled: true, voiceMuted: this.voiceMuted });
+    this.offChannel = this.deps.voice.onChannel(({ micMuted }) =>
+      this.dispatch({ type: 'MIC_MUTED', muted: micMuted }),
+    );
     this.dispatch({ type: 'CAMERA_READY' });
     this.loop = this.deps.setInterval(() => void this.tick(), FRAME_INTERVAL_MS);
   }
@@ -202,7 +249,14 @@ export class AudionSession {
     this.queue = null;
     this.deps.tracker.stop();
     this.releaseCamera();
-    if (this.dismissTimer !== undefined) this.deps.clearTimeout(this.dismissTimer);
+    // Audion Off: nothing of Audion is added to the call any more; the plain microphone passes through.
+    this.deps.voice.configure({ enabled: false, voiceMuted: this.voiceMuted });
+    this.offChannel?.();
+    this.offChannel = null;
+    this.pauseSeen = false;
+    for (const t of [this.dismissTimer, this.captionTimer, this.noticeTimer]) {
+      if (t !== undefined) this.deps.clearTimeout(t);
+    }
     this.dispatch({ type: 'TURN_OFF' });
   }
 
@@ -215,7 +269,120 @@ export class AudionSession {
 
   confirmYes = () => this.dispatch({ type: 'CONFIRM_YES' });
   confirmRetry = () => this.dispatch({ type: 'CONFIRM_RETRY' });
-  clear = () => this.dispatch({ type: 'CLEAR' });
+  clear = () => {
+    this.pauseSeen = false;
+    this.dispatch({ type: 'CLEAR' });
+  };
+
+  /** Sign labels (never video or text) behind what was spoken this call; sent only with feedback consent. */
+  getSignLog = (): string[] => [...this.signLog];
+  clearSignLog = (): void => void (this.signLog = []);
+
+  /** Audion's own mute switch: sentences are still composed and captioned, but not spoken into the call. */
+  setVoiceMuted(muted: boolean): void {
+    this.voiceMuted = muted;
+    if (this.state.on) this.deps.voice.configure({ enabled: true, voiceMuted: muted });
+  }
+
+  /** The Speak button: speak the sentence on screen, or compose the signs so far and speak that. */
+  speakNow = (): Promise<void> =>
+    this.state.sentence !== null ? this.speak() : this.maybeCompose(true);
+
+  /**
+   * Turn the confirmed signs into one sentence. Waits until nothing is in flight or awaiting confirmation.
+   * Auto-speak mode (or the Speak button) goes straight on to speaking; confirm-first stops at the sentence.
+   */
+  private async maybeCompose(manual = false): Promise<void> {
+    const s = this.state;
+    if (!s.on || s.starting || s.composing || s.speaking || s.sentence !== null) return;
+    if (s.chips.length === 0 || pendingChip(s) || s.inFlight > 0) return;
+    this.pauseSeen = false;
+    const run = this.run;
+    const signs = s.chips.map((c) => c.sign);
+    this.dispatch({ type: 'COMPOSE_START' });
+    const res = (await this.deps.send({ type: 'api/compose', signs })) as
+      | { ok: true; sentence: string }
+      | { ok: false; error?: { retryable?: boolean } }
+      | undefined;
+    if (run !== this.run) return;
+    if (!res?.ok) {
+      this.dispatch({ type: 'COMPOSE_FAILED', retryable: res?.error?.retryable ?? true });
+      return;
+    }
+    this.sentenceSigns = signs;
+    this.dispatch({ type: 'COMPOSED', sentence: res.sentence });
+    if (manual || this.deps.settings().speakMode === 'auto') await this.speak();
+  }
+
+  private async speak(): Promise<void> {
+    const s = this.state;
+    if (!s.on || s.speaking || s.sentence === null) return;
+    const text = s.sentence;
+    const run = this.run;
+    const cfg = this.deps.settings();
+    this.dispatch({ type: 'SPEAK_START' });
+    if (this.captionTimer !== undefined) this.deps.clearTimeout(this.captionTimer);
+
+    if (!this.voiceMuted) {
+      const audio = (await this.deps.send({
+        type: 'api/speak',
+        text,
+        voiceId: cfg.voiceId,
+        speed: cfg.speed,
+      })) as
+        | { ok: true; audioBase64: string }
+        | { ok: false; error?: { retryable?: boolean } }
+        | undefined;
+      if (run !== this.run) return;
+      if (!audio?.ok) {
+        this.dispatch({
+          type: 'SPEAK_FAILED',
+          reason: audio?.error?.retryable === false ? 'other' : 'network',
+        });
+        this.scheduleCaptionClear();
+        return;
+      }
+      const result = await this.deps.voice.speak(fromBase64(audio.audioBase64));
+      if (run !== this.run) return;
+      if (result === 'no-channel' || result === 'disabled' || result === 'error') {
+        this.dispatch({ type: 'SPEAK_FAILED', reason: result === 'error' ? 'other' : 'noChannel' });
+        this.scheduleCaptionClear();
+        return;
+      }
+    }
+
+    this.signLog.push(...this.sentenceSigns);
+    this.dispatch({ type: 'SPOKEN' });
+    this.scheduleCaptionClear();
+    void this.afterSpoken(text, run, cfg.postToChat);
+  }
+
+  private async afterSpoken(text: string, run: number, postChat: boolean): Promise<void> {
+    void this.deps.send({ type: 'transcript/add', text });
+    if (!postChat) return;
+    const result = await this.deps.chat(text);
+    if (run !== this.run || result === 'sent') return;
+    this.dispatch({
+      type: 'NOTICE',
+      text:
+        result === 'draft'
+          ? 'Not posted to Meet chat: there is a draft in the chat box.'
+          : 'Couldn’t post to Meet chat.',
+    });
+    if (this.noticeTimer !== undefined) this.deps.clearTimeout(this.noticeTimer);
+    this.noticeTimer = this.deps.setTimeout(
+      () => this.dispatch({ type: 'NOTICE', text: null }),
+      NOTICE_MS,
+    );
+  }
+
+  private scheduleCaptionClear() {
+    if (this.captionTimer !== undefined) this.deps.clearTimeout(this.captionTimer);
+    this.captionTimer = this.deps.setTimeout(
+      () => this.dispatch({ type: 'CAPTION_CLEAR' }),
+      CAPTION_MS,
+    );
+  }
 
   /** Process one frame. The capture loop calls this; tests call it directly with scripted frames. */
   async tick(frameOverride?: LandmarkFrame): Promise<void> {
@@ -256,6 +423,7 @@ export class AudionSession {
         this.recorder?.disarm(); // after a clip was taken this is a no-op: finish() already detached it
         break;
       case 'signStart':
+        this.pauseSeen = false;
         this.dispatch({ type: 'SIGN_STARTED' });
         this.recorder?.signStarted();
         break;
@@ -270,7 +438,9 @@ export class AudionSession {
         this.autoDismissNotRecognised();
         break;
       case 'pause':
+        this.pauseSeen = true;
         this.pauseListeners.forEach((l) => l());
+        void this.maybeCompose();
         break;
     }
   }

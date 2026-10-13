@@ -4,31 +4,12 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import * as settingsModule from '../lib/settings';
 import { createSettingsStore } from '../lib/settings';
 import { memoryStore } from '../lib/storage';
+import { send } from '../lib/messages';
 import { AudionApp } from './AudionApp';
-import { AudionSession, type SessionDeps } from './session';
+import { fakeSession } from '../testing/fakeSession';
 import { createPanelStore } from './store';
 
 vi.mock('../lib/messages', async (orig) => ({ ...(await orig<object>()), send: vi.fn() }));
-
-function fakeSession(overrides: Partial<SessionDeps> = {}) {
-  const track = { stop: vi.fn() };
-  const stream = { getTracks: () => [track] } as unknown as MediaStream;
-  const deps: SessionDeps = {
-    tracker: { start: async () => {}, detect: async () => null, stop: vi.fn() },
-    getCamera: async () => stream,
-    createRecorder: () => ({ arm() {}, disarm() {}, signStarted() {}, finish: async () => null }),
-    send: async () => ({ ok: true, mode: 'mock', confidenceThreshold: 0.5 }),
-    settings: () => ({ holdTimeMs: 400, pauseMs: 1500 }),
-    luminance: () => 120,
-    now: () => 0,
-    setInterval: () => 1,
-    clearInterval: () => {},
-    setTimeout: (fn, ms) => setTimeout(fn, ms),
-    clearTimeout: (id) => clearTimeout(id as ReturnType<typeof setTimeout>),
-    ...overrides,
-  };
-  return { session: new AudionSession(deps), track };
-}
 
 let host: HTMLElement;
 let root: Root;
@@ -63,6 +44,8 @@ async function mount(session = fakeSession().session) {
 }
 
 beforeEach(() => {
+  vi.mocked(send).mockReset();
+  vi.mocked(send).mockResolvedValue({ ok: true, entries: [] } as never);
   Object.defineProperty(window, 'innerWidth', { value: 1440, configurable: true });
   Object.defineProperty(window, 'innerHeight', { value: 900, configurable: true });
 });
@@ -336,5 +319,183 @@ describe('recognition UI', () => {
     fireEvent.click(ui.getByRole('button', { name: 'Try again' }));
     await waitFor(() => expect(session.getState().on).toBe(true));
     expect(getCamera).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe('speaking, captions and the end-of-call summary', () => {
+  const recognised = (sign: 'hello' | 'tomorrow') =>
+    ({ type: 'RECOGNISED', sign, confidence: 0.9, threshold: 0.5 }) as const;
+
+  async function onWith(env = fakeSession()) {
+    const app = await mount(env.session);
+    fireEvent.click(app.ui.getByRole('button', { name: 'Expand Audion' }));
+    fireEvent.click(app.ui.getByRole('switch', { name: 'Audion' }));
+    await waitFor(() => expect(app.container.querySelector('.au-pill')?.textContent).toBe('Ready'));
+    return { ...app, env };
+  }
+  const withChip = (session: ReturnType<typeof fakeSession>['session']) =>
+    act(async () => {
+      session.dispatch({ type: 'CLIP_READY' });
+      session.dispatch(recognised('hello'));
+    });
+
+  it('Speak is disabled with nothing to say; with signs it speaks into the call and shows the caption', async () => {
+    const env = fakeSession();
+    const { ui } = await onWith(env);
+    expect((ui.getByRole('button', { name: 'Speak' }) as HTMLButtonElement).disabled).toBe(true);
+    expect((ui.getByRole('button', { name: 'Cancel' }) as HTMLButtonElement).disabled).toBe(true);
+
+    await withChip(env.session);
+    const speak = ui.getByRole('button', { name: 'Speak' }) as HTMLButtonElement;
+    expect(speak.disabled).toBe(false);
+    await act(async () => fireEvent.click(speak));
+    await waitFor(() => expect(env.voice.spoken).toHaveLength(1));
+    const caption = await ui.findByRole('status', { name: 'Audion caption' });
+    expect(caption.textContent).toContain('Hello, please wait.');
+    expect(caption.textContent).toContain('You'); // default signer name
+  });
+
+  it('confirm-first shows the sentence in the panel with Speak and Cancel', async () => {
+    const env = fakeSession({
+      settings: () => ({
+        holdTimeMs: 400,
+        pauseMs: 1500,
+        speakMode: 'confirm',
+        voiceId: 'aria',
+        speed: 1,
+        postToChat: false,
+      }),
+    });
+    const { ui } = await onWith(env);
+    await withChip(env.session);
+    await act(async () => {
+      env.session.dispatch({ type: 'COMPOSE_START' });
+      env.session.dispatch({ type: 'COMPOSED', sentence: 'Please wait.' });
+    });
+    expect(ui.getByLabelText('Sentence').textContent).toBe('Please wait.');
+    expect(env.voice.spoken).toHaveLength(0);
+    fireEvent.click(ui.getByRole('button', { name: 'Cancel' }));
+    expect(env.session.getState().sentence).toBeNull();
+  });
+
+  it('caption follows the signer’s name, size and position settings', async () => {
+    const env = fakeSession();
+    const { ui, settings } = await onWith(env);
+    await act(async () =>
+      settings.useStore
+        .getState()
+        .update({ displayName: 'Alex', captionSize: 'large', captionPosition: 'top' }),
+    );
+    await act(async () => {
+      env.session.dispatch({ type: 'CLIP_READY' });
+      env.session.dispatch(recognised('hello'));
+      env.session.dispatch({ type: 'COMPOSE_START' });
+      env.session.dispatch({ type: 'COMPOSED', sentence: 'Please wait.' });
+      env.session.dispatch({ type: 'SPEAK_START' });
+    });
+    const caption = await ui.findByRole('status', { name: 'Audion caption' });
+    expect(caption.textContent).toContain('Alex');
+    expect(caption.style.fontSize).toBe('26px');
+    expect(caption.style.top).toBe('16px');
+    expect(caption.getAttribute('aria-live')).toBe('polite');
+    expect(caption.querySelector('[aria-label="Speaking"]')).toBeTruthy(); // wave icon with a text name
+  });
+
+  it('Audion’s voice switch is remembered and tells the session', async () => {
+    const env = fakeSession();
+    const { ui, prefs } = await onWith(env);
+    fireEvent.click(ui.getByRole('switch', { name: 'Speak into the call' }));
+    await waitFor(() =>
+      expect(env.voice.configs.at(-1)).toEqual({ enabled: true, voiceMuted: true }),
+    );
+    expect(await prefs.get('panelPrefs')).toMatchObject({ voiceMuted: true });
+    expect(ui.getByText(/voice is off/)).toBeTruthy();
+  });
+
+  it('warns when Meet’s own microphone is muted, since nobody could hear Audion', async () => {
+    const env = fakeSession();
+    const { ui } = await onWith(env);
+    await act(async () => env.voice.emitChannel({ hasChannel: true, micMuted: true }));
+    expect(ui.getByText(/Your Meet microphone is muted/)).toBeTruthy();
+    await act(async () => env.voice.emitChannel({ hasChannel: true, micMuted: false }));
+    expect(ui.queryByText(/Your Meet microphone is muted/)).toBeNull();
+  });
+
+  it('shows the transcript when the call ends, can copy it, and clears it on close', async () => {
+    const entries = [
+      { text: 'Hello, please wait.', at: new Date(2026, 9, 13, 10, 42).getTime() },
+      { text: 'Thank you.', at: new Date(2026, 9, 13, 10, 44).getTime() },
+    ];
+    vi.mocked(send).mockImplementation((async (req: { type: string }) =>
+      req.type === 'transcript/get' ? { ok: true, entries } : { ok: true }) as never);
+    const writeText = vi.fn(async () => {});
+    Object.defineProperty(navigator, 'clipboard', { value: { writeText }, configurable: true });
+
+    const env = fakeSession();
+    const { ui } = await onWith(env);
+    const leave = document.createElement('button');
+    leave.setAttribute('aria-label', 'Leave call');
+    document.body.append(leave);
+    await act(async () => leave.click());
+
+    const card = await ui.findByRole('region', { name: 'Call summary' });
+    expect(env.session.getState().on).toBe(false); // leaving also switched Audion off
+    const items = within(card).getAllByRole('listitem');
+    expect(items).toHaveLength(2);
+    expect(items[0]!.textContent).toMatch(/\d.*Hello, please wait\./);
+
+    await act(async () => fireEvent.click(within(card).getByRole('button', { name: 'Copy' })));
+    expect(writeText).toHaveBeenCalledTimes(1);
+    const copied = (writeText.mock.calls[0] as unknown as string[])[0]!;
+    expect(copied.split('\n')).toHaveLength(2);
+    expect(copied).toMatch(/^\[.+\] Hello, please wait\.\n\[.+\] Thank you\.$/);
+    expect(await within(card).findByText('Copied')).toBeTruthy();
+
+    await act(async () => fireEvent.click(within(card).getByRole('button', { name: 'Close' })));
+    expect(vi.mocked(send)).toHaveBeenCalledWith({ type: 'transcript/clear' });
+    expect(ui.queryByRole('region', { name: 'Call summary' })).toBeNull();
+    leave.remove();
+  });
+
+  it('sends feedback (rating and sign labels only) only when the signer has consented', async () => {
+    vi.mocked(send).mockImplementation((async (req: { type: string }) =>
+      req.type === 'transcript/get'
+        ? { ok: true, entries: [{ text: 'Hello.', at: Date.now() }] }
+        : { ok: true }) as never);
+    const env = fakeSession();
+    const { ui, settings } = await onWith(env);
+    await act(async () => {
+      env.session.dispatch({ type: 'CLIP_READY' });
+      env.session.dispatch(recognised('hello'));
+    });
+    await act(async () => void (await env.session.speakNow()));
+
+    const leave = document.createElement('button');
+    leave.setAttribute('aria-label', 'Leave call');
+    document.body.append(leave);
+    await act(async () => leave.click());
+    const card = await ui.findByRole('region', { name: 'Call summary' });
+
+    // No consent: nothing is sent, and the card explains how to turn it on.
+    await act(async () =>
+      fireEvent.click(within(card).getByRole('button', { name: 'Yes, accurate' })),
+    );
+    expect(within(card).getByText(/Feedback is off/)).toBeTruthy();
+    expect(
+      vi.mocked(send).mock.calls.some(([r]) => (r as { type: string }).type === 'api/feedback'),
+    ).toBe(false);
+
+    await act(async () => settings.useStore.getState().update({ feedbackConsent: true }));
+    await act(async () =>
+      fireEvent.click(within(card).getByRole('button', { name: 'Yes, accurate' })),
+    );
+    const call = vi
+      .mocked(send)
+      .mock.calls.find(([r]) => (r as { type: string }).type === 'api/feedback')!;
+    expect(call[0]).toEqual({ type: 'api/feedback', rating: 'up', signs: ['hello'] }); // no text, no video
+    expect(
+      await within(card).findByText(/Only your rating and the sign words were sent/),
+    ).toBeTruthy();
+    leave.remove();
   });
 });

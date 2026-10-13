@@ -19,8 +19,14 @@ $('join').addEventListener('click', async () => {
 });
 
 $('leave').addEventListener('click', () => {
+  // Like Meet: stay on the page and show a "left" screen (no reload), so end-of-call UI can appear.
   stream?.getTracks().forEach((t) => t.stop());
-  location.reload();
+  stream = undefined;
+  $('selfVideo').srcObject = null;
+  $('leave').hidden = true;
+  $('join').hidden = false;
+  $('join').textContent = 'Rejoin';
+  document.title = 'Fake Meet (left)';
 });
 
 function toggle(btn, onLabel, offLabel, cb) {

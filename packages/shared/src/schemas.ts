@@ -70,6 +70,13 @@ export const speakRequestSchema = z.object({
 });
 export type SpeakRequest = z.infer<typeof speakRequestSchema>;
 
+// POST /v1/feedback: thumbs up/down on a transcript. Only the rating and sign labels, never video or text.
+export const feedbackRequestSchema = z.object({
+  rating: z.enum(['up', 'down']),
+  signs: z.array(signSchema).max(200),
+});
+export type FeedbackRequest = z.infer<typeof feedbackRequestSchema>;
+
 // GET /healthz
 export const healthResponseSchema = z.object({
   ok: z.literal(true),

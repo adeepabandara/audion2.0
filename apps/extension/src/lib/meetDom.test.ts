@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { isMeetCallPath, locateControlBar, type Rect } from './meetDom';
 
 const VIEW = { width: 1440, height: 900 };
@@ -77,4 +77,88 @@ describe('isMeetCallPath', () => {
     ['/landing', false],
     ['/new', false],
   ])('%s -> %s', (path, expected) => expect(isMeetCallPath(path)).toBe(expected));
+});
+
+import { postToChat, watchLeaveCall } from './meetDom';
+
+describe('postToChat', () => {
+  const closedChat = `
+    <div role="toolbar"><button aria-label="Chat with everyone" id="toggle">Chat</button></div>`;
+  const chatPanel = `
+    <aside id="panel"><textarea aria-label="Send a message" id="box"></textarea>
+    <button aria-label="Send a message to everyone" id="send">Send</button></aside>`;
+
+  /** Meet-like: the panel does not exist until the toggle is clicked, and Send is disabled until there is text. */
+  function wire(opts: { startOpen?: boolean; draft?: string; noSend?: boolean } = {}) {
+    document.body.innerHTML = closedChat + (opts.startOpen ? chatPanel : '');
+    const sent: string[] = [];
+    const attach = () => {
+      const box = document.getElementById('box') as HTMLTextAreaElement | null;
+      const send = document.getElementById('send') as HTMLButtonElement | null;
+      if (!box || !send) return;
+      if (opts.draft) box.value = opts.draft;
+      send.disabled = true;
+      box.addEventListener('input', () => (send.disabled = !box.value.trim()));
+      send.addEventListener('click', () => {
+        sent.push(box.value);
+        box.value = '';
+        send.disabled = true;
+      });
+      if (opts.noSend) send.remove();
+    };
+    document.getElementById('toggle')!.addEventListener('click', () => {
+      const panel = document.getElementById('panel');
+      if (panel) panel.remove();
+      else {
+        document.body.insertAdjacentHTML('beforeend', chatPanel);
+        attach();
+      }
+    });
+    if (opts.startOpen) attach();
+    return sent;
+  }
+
+  it('opens the chat panel, posts, and closes it again', async () => {
+    const sent = wire();
+    expect(await postToChat('Hello, please wait.')).toBe('sent');
+    expect(sent).toEqual(['Hello, please wait.']);
+    expect(document.getElementById('panel')).toBeNull(); // left as we found it
+  });
+
+  it('posts into an already-open chat and leaves it open', async () => {
+    const sent = wire({ startOpen: true });
+    expect(await postToChat('Thank you.')).toBe('sent');
+    expect(sent).toEqual(['Thank you.']);
+    expect(document.getElementById('panel')).not.toBeNull();
+  });
+
+  it('never overwrites what the user is typing', async () => {
+    const sent = wire({ startOpen: true, draft: 'half a thought' });
+    expect(await postToChat('Hello.')).toBe('draft');
+    expect(sent).toEqual([]);
+    expect((document.getElementById('box') as HTMLTextAreaElement).value).toBe('half a thought');
+  });
+
+  it('reports no-chat when Meet has no chat control, and failed when Send is missing', async () => {
+    document.body.innerHTML = '<div>nothing here</div>';
+    expect(await postToChat('Hi', document, { openWaitMs: 100 })).toBe('no-chat');
+    wire({ startOpen: true, noSend: true });
+    expect(await postToChat('Hi')).toBe('failed');
+  });
+});
+
+describe('watchLeaveCall', () => {
+  it('fires when the Leave call button (or something inside it) is clicked, until unsubscribed', () => {
+    document.body.innerHTML =
+      '<button aria-label="Leave call"><span id="icon">x</span></button><button aria-label="Chat with everyone" id="other">c</button>';
+    const cb = vi.fn();
+    const off = watchLeaveCall(cb);
+    document.getElementById('other')!.click();
+    expect(cb).not.toHaveBeenCalled();
+    document.getElementById('icon')!.click();
+    expect(cb).toHaveBeenCalledTimes(1);
+    off();
+    document.getElementById('icon')!.click();
+    expect(cb).toHaveBeenCalledTimes(1);
+  });
 });

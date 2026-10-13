@@ -1,5 +1,6 @@
 import {
   composeRequestSchema,
+  feedbackRequestSchema,
   MAX_CLIP_BYTES,
   MAX_CLIP_SECONDS,
   normaliseSign,
@@ -181,6 +182,13 @@ export async function buildApp(
       req.log.error({ errCode: (e as { code?: string }).code }, 'speaker failed');
       throw new AppError('MODEL_UNAVAILABLE', 'Speech is temporarily unavailable.');
     }
+  });
+
+  // Feedback is logged as labels only (rating + sign words); nothing is stored beyond the log line.
+  app.post('/v1/feedback', { preHandler: authed }, async (req, reply) => {
+    const { rating, signs } = feedbackRequestSchema.parse(req.body);
+    req.log.info({ rating, signs }, 'feedback');
+    return reply.code(204).send();
   });
 
   return app;

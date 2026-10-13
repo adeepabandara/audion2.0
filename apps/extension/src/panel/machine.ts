@@ -3,7 +3,13 @@ import type { Status } from '@audion/ui';
 import type { CameraProblem } from '../lib/camera';
 
 /** Orthogonal conditions that can overlay any phase. */
-export type Problem = 'lowLight' | 'handsOut' | 'notRecognised' | 'offline' | 'cameraBlocked';
+export type Problem =
+  | 'lowLight'
+  | 'handsOut'
+  | 'notRecognised'
+  | 'offline'
+  | 'cameraBlocked'
+  | 'voiceUnavailable';
 
 export type Phase =
   | 'off'
@@ -34,6 +40,15 @@ export interface MachineState {
   composing: boolean;
   speaking: boolean;
   sentence: string | null;
+  /** Chips included in the sentence being composed / spoken; only these are removed once it is spoken. */
+  composingIds: number[];
+  sentenceIds: number[];
+  /** Text for the on-screen caption bar (set when speaking starts, cleared a few seconds after). */
+  caption: string | null;
+  /** Meet's own mute switch is on, so nobody can hear Audion. */
+  micMuted: boolean;
+  /** Short, non-blocking message (e.g. chat post skipped). */
+  notice: string | null;
   chips: ChipItem[];
   problems: Problem[];
   cameraProblem: CameraProblem | null;
@@ -49,6 +64,11 @@ export const initialMachine = (): MachineState => ({
   composing: false,
   speaking: false,
   sentence: null,
+  composingIds: [],
+  sentenceIds: [],
+  caption: null,
+  micMuted: false,
+  notice: null,
   chips: [],
   problems: [],
   cameraProblem: null,
@@ -75,6 +95,10 @@ export type MachineEvent =
   | { type: 'COMPOSE_FAILED'; retryable: boolean }
   | { type: 'SPEAK_START' }
   | { type: 'SPOKEN' }
+  | { type: 'SPEAK_FAILED'; reason: 'noChannel' | 'network' | 'other' }
+  | { type: 'CAPTION_CLEAR' }
+  | { type: 'MIC_MUTED'; muted: boolean }
+  | { type: 'NOTICE'; text: string | null }
   | { type: 'LIGHT'; dark: boolean }
   | { type: 'HANDS_EDGE'; out: boolean }
   | { type: 'ONLINE'; online: boolean }
@@ -164,29 +188,69 @@ export function reduce(s: MachineState, e: MachineEvent): MachineState {
         ...s,
         chips: [],
         sentence: null,
+        composingIds: [],
+        sentenceIds: [],
         composing: false,
         speaking: false,
-        problems: withoutProblem(s.problems, 'notRecognised'),
+        problems: withoutProblem(withoutProblem(s.problems, 'notRecognised'), 'voiceUnavailable'),
       };
     case 'COMPOSE_START':
-      return s.chips.length ? { ...s, composing: true } : s;
+      return s.chips.length ? { ...s, composing: true, composingIds: s.chips.map((c) => c.id) } : s;
     case 'COMPOSED':
       return {
         ...s,
         composing: false,
         sentence: e.sentence,
+        sentenceIds: s.composingIds,
+        composingIds: [],
         problems: withoutProblem(s.problems, 'offline'),
       };
     case 'COMPOSE_FAILED':
       return {
         ...s,
         composing: false,
+        composingIds: [],
         problems: withProblem(s.problems, e.retryable ? 'offline' : 'notRecognised'),
       };
     case 'SPEAK_START':
-      return s.sentence ? { ...s, speaking: true } : s;
+      return s.sentence
+        ? {
+            ...s,
+            speaking: true,
+            caption: s.sentence,
+            problems: withoutProblem(s.problems, 'voiceUnavailable'),
+          }
+        : s;
     case 'SPOKEN':
-      return { ...s, speaking: false, sentence: null, chips: [] };
+      return {
+        ...s,
+        speaking: false,
+        sentence: null,
+        // Only the signs that made up this sentence go; signs made while it was being spoken stay.
+        chips: s.chips.filter((c) => !s.sentenceIds.includes(c.id)),
+        sentenceIds: [],
+        problems: withoutProblem(withoutProblem(s.problems, 'offline'), 'voiceUnavailable'),
+      };
+    case 'SPEAK_FAILED':
+      // The sentence stays, so the signer can press Speak again.
+      return {
+        ...s,
+        speaking: false,
+        problems: withProblem(
+          s.problems,
+          e.reason === 'network'
+            ? 'offline'
+            : e.reason === 'noChannel'
+              ? 'voiceUnavailable'
+              : 'notRecognised',
+        ),
+      };
+    case 'CAPTION_CLEAR':
+      return { ...s, caption: null };
+    case 'MIC_MUTED':
+      return { ...s, micMuted: e.muted };
+    case 'NOTICE':
+      return { ...s, notice: e.text };
     case 'LIGHT':
       return {
         ...s,
@@ -268,6 +332,14 @@ const PROBLEM_VIEW: Array<[Problem, { status: Status; label: string; hint: strin
     },
   ],
   [
+    'voiceUnavailable',
+    {
+      status: 'attention',
+      label: 'Voice not connected',
+      hint: 'Reload this Meet tab once so Audion can speak in the call.',
+    },
+  ],
+  [
     'notRecognised',
     { status: 'attention', label: 'Couldn’t recognize that', hint: 'Try again slowly.' },
   ],
@@ -307,5 +379,6 @@ export const ALL_PROBLEMS: Problem[] = [
   'notRecognised',
   'offline',
   'cameraBlocked',
+  'voiceUnavailable',
 ];
 export { PHASE_VIEW, PROBLEM_VIEW };
