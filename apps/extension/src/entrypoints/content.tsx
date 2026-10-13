@@ -1,11 +1,15 @@
 import '@audion/ui/styles.css';
 import { createRoot } from 'react-dom/client';
 import { AudionApp } from '../panel/AudionApp';
+import { ErrorBoundary } from '../panel/ErrorBoundary';
 import { createDefaultSession } from '../panel/defaultSession';
+import { installE2eHook } from '../panel/e2eHook';
 import '../panel/panel.css';
 
 // Dev builds can also run on the local fake Meet page: AUDION_FAKE_MEET=1 pnpm --filter @audion/extension build
 const FAKE_MEET = process.env.AUDION_FAKE_MEET === '1';
+// End-to-end test hook: compiled in only for AUDION_E2E=1 builds (see panel/e2eHook.ts).
+const E2E = process.env.AUDION_E2E === '1';
 
 export default defineContentScript({
   matches: ['https://meet.google.com/*', ...(FAKE_MEET ? ['http://localhost:4173/*'] : [])],
@@ -25,12 +29,15 @@ export default defineContentScript({
           browser.runtime.getURL('/tracker.html'),
           container.getRootNode(),
         );
+        if (E2E) installE2eHook(session);
         root.render(
-          <AudionApp
-            session={session}
-            portalContainer={container}
-            alwaysShow={FAKE_MEET && location.hostname === 'localhost'}
-          />,
+          <ErrorBoundary>
+            <AudionApp
+              session={session}
+              portalContainer={container}
+              alwaysShow={FAKE_MEET && location.hostname === 'localhost'}
+            />
+          </ErrorBoundary>,
         );
         return root;
       },

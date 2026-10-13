@@ -7,7 +7,7 @@ import { promisify } from 'node:util';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { assertSafeApiUrl, createClient, type Outcome } from './client.js';
 import { parseLine, parseManifest } from './manifest.js';
-import { buildReport, formatReport, percentile } from './report.js';
+import { buildReport, formatReport, percentile, suggestThreshold } from './report.js';
 import { pool, type EvalResult } from './run.js';
 
 const run = promisify(execFile);
@@ -317,4 +317,49 @@ describe('CLI against a local API', () => {
     ).rejects.toMatchObject({ stderr: expect.stringMatching(/Refusing to send clips/) });
     await expect(run('node_modules/.bin/tsx', ['src/cli.ts'])).rejects.toMatchObject({ code: 2 });
   }, 30_000);
+});
+
+describe('threshold suggestion', () => {
+  const c = (confidence: number, correct: boolean) => ({ confidence, correct });
+  // Confident answers are right; unsure ones mostly wrong: a threshold around 0.5 separates them.
+  const data = [
+    c(0.95, true),
+    c(0.9, true),
+    c(0.85, true),
+    c(0.8, true),
+    c(0.7, true),
+    c(0.6, true),
+    c(0.55, true),
+    c(0.4, false),
+    c(0.3, false),
+    c(0.2, true),
+  ];
+
+  it('picks the lowest threshold whose unasked signs meet the accuracy goal within the interruption budget', () => {
+    const s = suggestThreshold(data, { minAccuracyOfRest: 0.95, maxConfirmRate: 0.5 });
+    // At 0.40 or below the wrong 0.4 answer is among the unasked ones; at 0.45 it is asked about instead.
+    expect(s.threshold).toBe(0.45);
+    expect(s.accuracyOfRest).toBe(1);
+    expect(s.needConfirm).toBeCloseTo(0.3);
+  });
+
+  it('returns null when no threshold can meet the goal', () => {
+    const noisy = [c(0.9, false), c(0.8, false), c(0.7, true), c(0.6, false)];
+    expect(
+      suggestThreshold(noisy, { minAccuracyOfRest: 0.95, maxConfirmRate: 0.5 }).threshold,
+    ).toBeNull();
+    expect(suggestThreshold([]).threshold).toBeNull();
+  });
+
+  it('shows up in the text report', () => {
+    const results = Array.from({ length: 10 }, (_, i) => ({
+      item: { path: 'x', mime: 'video/webm', label: 'hello' as const, line: i },
+      outcome: {
+        ok: true as const,
+        result: { sign: 'hello', confidence: 0.9, alternatives: [], latencyMs: 1 },
+        wallMs: 2,
+      },
+    }));
+    expect(formatReport(buildReport(results))).toMatch(/Suggested CONFIDENCE_THRESHOLD=0\.05/);
+  });
 });

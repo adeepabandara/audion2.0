@@ -22,7 +22,13 @@ export default defineConfig({
   srcDir: 'src',
   vite: () => ({
     plugins: [react()],
-    define: { 'import.meta.env.VITE_API_URL': JSON.stringify(apiUrl) },
+    // Entry points read these flags both when WXT evaluates them in Node (manifest matches) and at runtime in the
+    // browser, where `process` does not exist, so they must be replaced at build time.
+    define: {
+      'import.meta.env.VITE_API_URL': JSON.stringify(apiUrl),
+      'process.env.AUDION_FAKE_MEET': JSON.stringify(process.env.AUDION_FAKE_MEET ?? ''),
+      'process.env.AUDION_E2E': JSON.stringify(process.env.AUDION_E2E ?? ''),
+    },
   }),
   hooks: {
     'build:publicAssets': (_wxt, files) => {
@@ -32,6 +38,8 @@ export default defineConfig({
     },
   },
   manifest: {
+    // Optional stable extension ID for local/dev builds (see docs/extension-id.md). Never set for a Web Store upload.
+    ...(process.env.EXTENSION_KEY ? { key: process.env.EXTENSION_KEY } : {}),
     name: 'Audion',
     description: 'Sign. Be heard in any Google Meet call.',
     permissions: ['storage'],

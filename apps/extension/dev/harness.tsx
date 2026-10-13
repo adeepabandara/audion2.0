@@ -4,7 +4,7 @@
 // (same window), so fake-meet's own getUserMedia call gets Audion's mixed microphone track.
 //   pnpm --filter @audion/extension build   (builds the tracker page + MediaPipe assets the harness serves)
 //   pnpm --filter @audion/extension harness
-// URL flags: ?fakecam=1 swaps video getUserMedia for an animated canvas stream, ?fakemic=1 swaps audio for a
+// Open http://localhost:4173/?harness=1 (add &fakecam=1&fakemic=1 for fake devices). ?fakecam=1 swaps video getUserMedia for an animated canvas stream, ?fakemic=1 swaps audio for a
 // silent oscillator-free stream (no real devices needed).
 import ui from '@audion/ui/styles.css?inline';
 import { createRoot } from 'react-dom/client';
@@ -109,4 +109,27 @@ for (const [label, run] of [
   b.onclick = () => void run();
   bar.append(b);
 }
+// Record real hand landmarks (no video, no audio: just hand-skeleton points) for tuning the segmenter:
+//   pnpm --filter @audion/eval segment ~/Downloads/audion-recording.landmarks.json
+// Switch Audion on, press Record, then sign normally for 20 s. Keep these files local; they describe a person's
+// hands, so only share or commit recordings the signer has agreed to share.
+const rec = document.createElement('button');
+rec.textContent = 'Record landmarks (20 s)';
+rec.onclick = () => {
+  const frames: unknown[] = [];
+  const off = session.onFrame((f) => frames.push(f));
+  rec.disabled = true;
+  rec.textContent = 'Recording…';
+  setTimeout(() => {
+    off();
+    const blob = new Blob([JSON.stringify({ version: 1, frames })], { type: 'application/json' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = 'audion-recording.landmarks.json';
+    a.click();
+    rec.disabled = false;
+    rec.textContent = 'Record landmarks (20 s)';
+  }, 20_000);
+};
+bar.append(rec);
 document.body.append(bar);

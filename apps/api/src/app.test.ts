@@ -286,3 +286,29 @@ describe('limits and origins', () => {
     expect(res.headers['x-content-type-options']).toBe('nosniff');
   });
 });
+
+describe('client IP behind a proxy', () => {
+  const session = (app: FastifyInstance, xff?: string) =>
+    app.inject({
+      method: 'POST',
+      url: '/v1/session',
+      headers: xff ? { 'x-forwarded-for': xff } : {},
+      payload: { installId: crypto.randomUUID() },
+    });
+
+  it('by default ignores X-Forwarded-For, so it cannot be used to dodge the per-IP limit', async () => {
+    ({ app } = await makeApp({ SESSION_LIMIT_PER_IP_PER_MIN: '2' }));
+    await session(app, '1.1.1.1');
+    await session(app, '2.2.2.2');
+    expect((await session(app, '3.3.3.3')).statusCode).toBe(429);
+  });
+
+  it('with one trusted hop (Cloud Run) limits per real client, using the entry the proxy appended', async () => {
+    ({ app } = await makeApp({ SESSION_LIMIT_PER_IP_PER_MIN: '2', TRUST_PROXY_HOPS: '1' }));
+    // A client-supplied first entry ("spoof-N") must not change the bucket: the proxy-added last entry does.
+    await session(app, 'spoof-1, 9.9.9.9');
+    await session(app, 'spoof-2, 9.9.9.9');
+    expect((await session(app, 'spoof-3, 9.9.9.9')).statusCode).toBe(429);
+    expect((await session(app, 'spoof-4, 8.8.8.8')).statusCode).toBe(200); // a different real client is unaffected
+  });
+});

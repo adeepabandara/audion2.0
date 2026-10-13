@@ -298,3 +298,41 @@ describe('CloudSpeaker', () => {
     ).rejects.toMatchObject({ code: 'BAD_REQUEST' });
   });
 });
+
+describe('deadlines', () => {
+  const slow = (): GenAIClient => ({ models: { generateContent: () => new Promise(() => {}) } });
+
+  it('a model call that never answers fails as MODEL_UNAVAILABLE after the deadline, and is aborted', async () => {
+    let signal: AbortSignal | undefined;
+    const client: GenAIClient = {
+      models: {
+        generateContent: (p) => {
+          signal = p.config?.abortSignal;
+          return new Promise(() => {});
+        },
+      },
+    };
+    const started = Date.now();
+    await expect(
+      new GeminiRecognizer(client, 'm', 50).recognize({
+        clip: Buffer.from('x'),
+        mime: 'video/webm',
+      }),
+    ).rejects.toMatchObject({
+      code: 'MODEL_UNAVAILABLE',
+      message: expect.stringMatching(/too long/),
+    });
+    expect(Date.now() - started).toBeLessThan(1000);
+    expect(signal?.aborted).toBe(true);
+  });
+
+  it('composer and speaker have deadlines too', async () => {
+    await expect(
+      new GeminiComposer(slow(), 'm', 50).compose({ signs: ['hello'] }),
+    ).rejects.toMatchObject({ code: 'MODEL_UNAVAILABLE' });
+    const hung: TtsClient = { synthesizeSpeech: () => new Promise(() => {}) };
+    await expect(
+      new CloudSpeaker(hung, 50).speak({ text: 'x', voiceId: 'aria', speed: 1 }),
+    ).rejects.toMatchObject({ code: 'MODEL_UNAVAILABLE' });
+  });
+});

@@ -15,7 +15,9 @@ jobs:
           node-version: 20
           cache: pnpm
       - run: pnpm install --frozen-lockfile
+      - run: node scripts/check-pins.mjs
       - run: pnpm build
+      - run: pnpm --filter @audion/extension check-build
       - run: pnpm typecheck
       - run: pnpm lint
       - run: pnpm test
@@ -26,3 +28,25 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - run: docker build -f apps/api/Dockerfile -t audion-api .
+
+  e2e:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm build
+      - run: pnpm --filter @audion/e2e build-extension
+      - run: pnpm --filter @audion/extension check-build
+        env:
+          AUDION_FAKE_MEET: '1'
+          AUDION_E2E: '1'
+      - run: pnpm --filter @audion/e2e exec playwright install --with-deps chromium
+      # Behaviour tests only: the visual baselines are macOS screenshots.
+      - run: pnpm --filter @audion/e2e e2e
+        env:
+          CI: 'true'

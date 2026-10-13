@@ -1,0 +1,20 @@
+{
+  "name": "@audion/e2e",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build-extension": "AUDION_FAKE_MEET=1 AUDION_E2E=1 pnpm --filter @audion/extension build",
+    "e2e": "playwright test --project=flow",
+    "e2e:visual": "playwright test --project=visual",
+    "update-visual": "playwright test --project=visual --update-snapshots",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "build": "echo \"e2e has no build step\"",
+    "store-assets": "playwright test --project=store"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.64.0",
+    "@types/node": "26.6.5",
+    "typescript": "5.7.2"
+  }
+}

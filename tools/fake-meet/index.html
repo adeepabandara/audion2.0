@@ -7,8 +7,16 @@
     <link rel="stylesheet" href="/fake-meet.css" />
     <!-- Audion's dev build injects its MAIN-world script at document_start, before this runs. -->
     <script src="/fake-meet.js" defer></script>
-    <!-- Optional: Audion UI harness (pnpm --filter @audion/extension harness). 404s harmlessly if not built. -->
-    <script src="/audion-harness.js" defer></script>
+    <!-- Optional: Audion UI harness (pnpm --filter @audion/extension harness), only with ?harness=1 so the
+         real extension (e2e) and the harness never mount Audion twice. -->
+    <script>
+      if (new URLSearchParams(location.search).has('harness')) {
+        const s = document.createElement('script');
+        s.src = '/audion-harness.js';
+        s.defer = true;
+        document.head.append(s);
+      }
+    </script>
   </head>
   <body>
     <main class="stage" aria-label="Meeting">

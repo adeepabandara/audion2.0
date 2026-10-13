@@ -2,6 +2,7 @@ packages:
   - apps/*
   - packages/*
   - tools/*
+  - e2e
 allowBuilds:
   '@google/genai': false
   esbuild: true

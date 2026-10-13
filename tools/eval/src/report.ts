@@ -29,7 +29,45 @@ export interface Report {
   };
   /** For picking CONFIDENCE_THRESHOLD: if signs below `threshold` need confirming, how many do, and how right are the rest? */
   thresholdSweep: Array<{ threshold: number; needConfirm: number; accuracyOfRest: number | null }>;
+  suggestion: ThresholdSuggestion;
   vsBaseline: number;
+}
+
+export interface ThresholdSuggestion {
+  /** Lowest threshold meeting both goals, or null if none does. */
+  threshold: number | null;
+  needConfirm: number | null;
+  accuracyOfRest: number | null;
+  goal: { minAccuracyOfRest: number; maxConfirmRate: number };
+}
+
+/**
+ * Pick CONFIDENCE_THRESHOLD: the lowest value at which the signs that are NOT asked about are at least
+ * `minAccuracyOfRest` right, while asking about no more than `maxConfirmRate` of all signs. (A lower threshold
+ * asks less often; a higher one catches more mistakes but interrupts the signer more.)
+ */
+export function suggestThreshold(
+  confidences: Array<{ confidence: number; correct: boolean }>,
+  goal = { minAccuracyOfRest: 0.9, maxConfirmRate: 0.4 },
+): ThresholdSuggestion {
+  const none: ThresholdSuggestion = {
+    threshold: null,
+    needConfirm: null,
+    accuracyOfRest: null,
+    goal,
+  };
+  if (!confidences.length) return none;
+  for (let t = 0.05; t <= 0.951; t += 0.05) {
+    const threshold = Math.round(t * 100) / 100;
+    const rest = confidences.filter((c) => c.confidence >= threshold);
+    if (!rest.length) continue;
+    const accuracyOfRest = rest.filter((c) => c.correct).length / rest.length;
+    const needConfirm = (confidences.length - rest.length) / confidences.length;
+    if (accuracyOfRest >= goal.minAccuracyOfRest && needConfirm <= goal.maxConfirmRate) {
+      return { threshold, needConfirm, accuracyOfRest, goal };
+    }
+  }
+  return none;
 }
 
 const pct = (n: number, d: number) => (d === 0 ? 0 : n / d);
@@ -100,6 +138,9 @@ export function buildReport(results: EvalResult[]): Report {
     };
   });
 
+  const suggestion = suggestThreshold(
+    withConf.map((a) => ({ confidence: c(a), correct: isRight(a) })),
+  );
   const accuracy = pct(correct, answered.length);
   return {
     total: results.length,
@@ -124,6 +165,7 @@ export function buildReport(results: EvalResult[]): Report {
       buckets,
     },
     thresholdSweep,
+    suggestion,
     vsBaseline: accuracy - BASELINE_ACCURACY,
   };
 }
@@ -171,6 +213,12 @@ export function formatReport(r: Report): string {
     L.push('');
     L.push('Threshold sweep (signs below the threshold ask "Did you mean...?"):');
     L.push('  threshold  asks to confirm  accuracy of the rest');
+    const g = r.suggestion.goal;
+    L.push(
+      r.suggestion.threshold === null
+        ? `  No threshold gets the unasked signs to ${p1(g.minAccuracyOfRest)} accuracy while asking about at most ${p1(g.maxConfirmRate)}. Keep 0.5 and improve the model first.`
+        : `  Suggested CONFIDENCE_THRESHOLD=${r.suggestion.threshold.toFixed(2)}: asks about ${p1(r.suggestion.needConfirm!)} of signs, the rest are ${p1(r.suggestion.accuracyOfRest!)} right (goal: >= ${p1(g.minAccuracyOfRest)} right, <= ${p1(g.maxConfirmRate)} asked).`,
+    );
     for (const t of r.thresholdSweep)
       L.push(
         `  ${t.threshold.toFixed(1).padStart(9)}  ${p1(t.needConfirm).padStart(14)}  ${t.accuracyOfRest === null ? '-' : p1(t.accuracyOfRest)}`,

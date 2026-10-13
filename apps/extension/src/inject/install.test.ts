@@ -172,3 +172,29 @@ describe('message protocol', () => {
     expect(fake.ctx.played).toBe(0);
   });
 });
+
+describe('never breaking the call', () => {
+  it('if our audio setup throws, Meet gets the plain stream untouched', async () => {
+    (window as unknown as Record<string, unknown>).AudioContext = function () {
+      throw new Error('AudioContext blocked');
+    };
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const stream = await gum({ audio: true, video: true });
+    const real = (await original.mock.results.at(-1)!.value) as FakeStream;
+    expect(stream).toBe(real); // exactly what Chrome gave us
+    expect(stream.getAudioTracks()[0]!.label).toBe('Built-in mic');
+    expect(warn).toHaveBeenCalled();
+    expect(last('channel')?.hasChannel ?? false).toBe(false);
+  });
+
+  it('with no microphone and a broken AudioContext, the original error still reaches Meet', async () => {
+    (window as unknown as Record<string, unknown>).AudioContext = function () {
+      throw new Error('boom');
+    };
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+    original.mockImplementationOnce(async () => {
+      throw Object.assign(new Error('none'), { name: 'NotFoundError' });
+    });
+    await expect(gum({ audio: true })).rejects.toMatchObject({ name: 'NotFoundError' });
+  });
+});

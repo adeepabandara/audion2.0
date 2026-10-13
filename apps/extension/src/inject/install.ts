@@ -39,65 +39,79 @@ export function installInject(win: Win = window as Win): () => void {
     if (!constraints?.audio) return original(constraints);
 
     let real: MediaStream | null = null;
+    let noMicError: unknown;
     try {
       real = await original(constraints);
     } catch (e) {
       // No microphone at all (common for signers): still give Meet an audio track that carries Audion's voice.
       if ((e as { name?: string }).name !== 'NotFoundError') throw e;
+      noMicError = e;
       real = constraints.video ? await original({ ...constraints, audio: false }) : null;
     }
 
-    const ctx = new win.AudioContext();
-    const mixer = new Mixer(ctx, real);
-    mixer.configure({ enabled, voiceMuted });
-    const audioTrack = mixer.stream.getAudioTracks()[0]!;
-    const realAudio = real?.getAudioTracks()[0];
+    // Whatever goes wrong while building our channel, the call must still work: fall back to the plain stream.
+    let ctx: MixerContext | undefined;
+    try {
+      ctx = new win.AudioContext();
+      const mixer = new Mixer(ctx, real);
+      mixer.configure({ enabled, voiceMuted });
+      const audioTrack = mixer.stream.getAudioTracks()[0]!;
+      const realAudio = real?.getAudioTracks()[0];
 
-    // Mirror the real mic's identity so Meet's device picker keeps working.
-    if (realAudio) {
-      Object.defineProperty(audioTrack, 'label', { get: () => realAudio.label });
-      audioTrack.getSettings = () => realAudio.getSettings();
-    }
-
-    // Meet mutes by setting track.enabled = false. Let that happen, but remember it: while muted, nobody
-    // can hear Audion either, and the panel tells the signer.
-    const proto = Object.getPrototypeOf(audioTrack) as MediaStreamTrack;
-    const enabledDesc =
-      Object.getOwnPropertyDescriptor(MediaStreamTrack.prototype, 'enabled') ??
-      Object.getOwnPropertyDescriptor(proto, 'enabled');
-    if (enabledDesc?.get && enabledDesc.set) {
-      Object.defineProperty(audioTrack, 'enabled', {
-        get: () => enabledDesc.get!.call(audioTrack),
-        set: (v: boolean) => {
-          enabledDesc.set!.call(audioTrack, v);
-          if (current === mixer) {
-            micMuted = !v;
-            announce();
-          }
-        },
-      });
-    }
-
-    // When Meet stops our track (mic off, leaving, device change) release the real microphone too,
-    // so the browser's recording indicator goes away.
-    const stopOriginal = audioTrack.stop.bind(audioTrack);
-    audioTrack.stop = () => {
-      stopOriginal();
-      real?.getTracks().forEach((t) => t.stop());
-      mixer.dispose();
-      if (current === mixer) {
-        current = null;
-        micMuted = false;
-        announce();
+      // Mirror the real mic's identity so Meet's device picker keeps working.
+      if (realAudio) {
+        Object.defineProperty(audioTrack, 'label', { get: () => realAudio.label });
+        audioTrack.getSettings = () => realAudio.getSettings();
       }
-    };
 
-    const old = current;
-    current = mixer;
-    micMuted = false;
-    if (old && old !== mixer) old.configure({ enabled: false }); // the previous channel stops speaking; Meet closes it
-    announce();
-    return new win.MediaStream([...(real?.getVideoTracks() ?? []), audioTrack]);
+      // Meet mutes by setting track.enabled = false. Let that happen, but remember it: while muted, nobody
+      // can hear Audion either, and the panel tells the signer.
+      const proto = Object.getPrototypeOf(audioTrack) as MediaStreamTrack;
+      const enabledDesc =
+        Object.getOwnPropertyDescriptor(MediaStreamTrack.prototype, 'enabled') ??
+        Object.getOwnPropertyDescriptor(proto, 'enabled');
+      if (enabledDesc?.get && enabledDesc.set) {
+        Object.defineProperty(audioTrack, 'enabled', {
+          get: () => enabledDesc.get!.call(audioTrack),
+          set: (v: boolean) => {
+            enabledDesc.set!.call(audioTrack, v);
+            if (current === mixer) {
+              micMuted = !v;
+              announce();
+            }
+          },
+        });
+      }
+
+      // When Meet stops our track (mic off, leaving, device change) release the real microphone too,
+      // so the browser's recording indicator goes away.
+      const stopOriginal = audioTrack.stop.bind(audioTrack);
+      audioTrack.stop = () => {
+        stopOriginal();
+        real?.getTracks().forEach((t) => t.stop());
+        mixer.dispose();
+        if (current === mixer) {
+          current = null;
+          micMuted = false;
+          announce();
+        }
+      };
+
+      const old = current;
+      current = mixer;
+      micMuted = false;
+      if (old && old !== mixer) old.configure({ enabled: false }); // the previous channel stops speaking; Meet closes it
+      announce();
+      return new win.MediaStream([...(real?.getVideoTracks() ?? []), audioTrack]);
+    } catch (e) {
+      console.warn(
+        'Audion: voice channel unavailable, passing the microphone through unchanged.',
+        e,
+      );
+      void ctx?.close().catch(() => {});
+      if (real) return real;
+      throw noMicError ?? e;
+    }
   };
 
   const onMessage = async (e: MessageEvent) => {

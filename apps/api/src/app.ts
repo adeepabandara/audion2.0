@@ -42,6 +42,12 @@ export async function buildApp(
   options: BuildOptions = {},
 ): Promise<FastifyInstance> {
   const app = Fastify({
+    // Behind Cloud Run every request arrives from Google's proxy; without this every user shares one IP bucket.
+    // Trust only the hops we know about, or a client could rotate X-Forwarded-For to dodge the per-IP limits.
+    trustProxy:
+      config.trustProxyHops > 0
+        ? (_address: string, hop: number) => hop < config.trustProxyHops
+        : false,
     bodyLimit: 64 * 1024,
     logger: {
       level: options.logLevel ?? process.env.LOG_LEVEL ?? 'info',
