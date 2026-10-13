@@ -1,0 +1,197 @@
+.ob {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 48px 24px;
+  background: var(--au-bg);
+  color: var(--au-text);
+}
+.ob__main {
+  width: 100%;
+  max-width: 960px;
+  display: grid;
+  gap: 24px;
+}
+.ob__center {
+  text-align: center;
+  justify-items: center;
+  max-width: 640px;
+  margin: 8vh auto 0;
+}
+.ob h1 {
+  font-size: var(--au-text-xl);
+  line-height: 1.2;
+  margin: 0;
+}
+.ob h2 {
+  font-size: var(--au-text-lg);
+  margin: 0;
+}
+.ob p {
+  margin: 0;
+  font-size: var(--au-text-md);
+  color: var(--au-text-2);
+}
+.ob__privacy {
+  display: inline-flex;
+  gap: 8px;
+  align-items: center;
+  color: var(--au-text);
+}
+.ob__steps {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 600;
+  color: var(--au-text-2);
+}
+.ob__dot {
+  width: 28px;
+  height: 6px;
+  border-radius: 3px;
+  background: var(--au-divider);
+}
+.ob__dot--active {
+  background: var(--au-highlight);
+}
+.ob__rows {
+  display: grid;
+  gap: 12px;
+  width: 100%;
+}
+.ob__row {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 16px;
+  text-align: left;
+  background: var(--au-surface);
+  border: 1px solid var(--au-divider);
+  border-radius: var(--au-radius-md);
+}
+.ob__row > div {
+  flex: 1;
+}
+.ob__row strong {
+  display: block;
+  font-size: var(--au-text-md);
+}
+.ob__row span.desc {
+  color: var(--au-text-2);
+}
+.ob__actions {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+.ob__bigicon {
+  display: grid;
+  place-items: center;
+  width: 88px;
+  height: 88px;
+  border-radius: 50%;
+  background: var(--au-surface);
+  color: var(--au-highlight);
+}
+.ob__cols {
+  display: grid;
+  grid-template-columns: minmax(280px, 1fr) minmax(320px, 1.2fr);
+  gap: 24px;
+  align-items: start;
+}
+@media (max-width: 760px) {
+  .ob__cols {
+    grid-template-columns: 1fr;
+  }
+}
+.ob__voices {
+  display: grid;
+  gap: 8px;
+}
+.ob__preview {
+  position: relative;
+  aspect-ratio: 4 / 3;
+  border-radius: var(--au-radius-lg);
+  overflow: hidden;
+  background: #000;
+  border: 2px solid var(--au-divider);
+}
+.ob__preview--success {
+  border-color: var(--au-success);
+  animation: ob-flash 900ms ease-out 1;
+}
+.ob__preview video {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  transform: scaleX(-1);
+}
+.ob__guide {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  color: rgb(255 255 255 / 70%);
+  pointer-events: none;
+}
+.ob__count {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  font-size: 72px;
+  font-weight: 800;
+  color: #fff;
+  text-shadow: 0 2px 12px rgb(0 0 0 / 70%);
+}
+.ob__prompt {
+  font-size: var(--au-text-lg);
+  font-weight: 700;
+  color: var(--au-text);
+}
+.ob__stack {
+  display: grid;
+  gap: 12px;
+}
+@keyframes ob-flash {
+  0% {
+    box-shadow: 0 0 0 0 var(--au-success);
+  }
+  100% {
+    box-shadow: 0 0 0 24px transparent;
+  }
+}
+/* Welcome illustration: a hand whose sign becomes sound arcs. Static when motion is reduced. */
+.ob__art {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--au-highlight);
+}
+.ob__art .arc {
+  opacity: 1;
+  animation: ob-arc 2.4s ease-in-out infinite;
+}
+.ob__art .arc:nth-of-type(2) {
+  animation-delay: 0.3s;
+}
+.ob__art .arc:nth-of-type(3) {
+  animation-delay: 0.6s;
+}
+@keyframes ob-arc {
+  0%,
+  100% {
+    opacity: 0.25;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .ob__art .arc,
+  .ob__preview--success {
+    animation: none;
+  }
+}

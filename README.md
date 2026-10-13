@@ -8,7 +8,7 @@ Audion is a Chrome extension (Manifest V3) that recognises isolated American Sig
 
 **Limitation:** other participants cannot see Audion's local overlay. They hear the voice (so Meet's own live captions caption it) and can optionally receive sentences in Meet chat.
 
-Status: M0 (foundations). See [NOTES.md](NOTES.md) for architecture and rules.
+Status: M3 (API with mock mode, design system, onboarding pages). See [NOTES.md](NOTES.md) for architecture and rules.
 
 ## Development
 
@@ -18,3 +18,14 @@ pnpm check   # build, typecheck, lint, test
 ```
 
 Copy `.env.example` to `.env` for local API settings. Never commit `.env` or any key.
+
+### Try it locally (mock mode, no Google Cloud)
+
+```bash
+pnpm build                                                 # builds shared + everything once
+ALLOWED_ORIGINS='*' MOCK=1 pnpm --filter @audion/api dev   # API on :8080
+pnpm --filter @audion/extension build                      # then load apps/extension/.output/chrome-mv3
+                                                           # via chrome://extensions > Developer mode > Load unpacked
+```
+
+The welcome page opens on install. Storybook: `pnpm --filter @audion/ui storybook`.

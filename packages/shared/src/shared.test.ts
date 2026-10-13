@@ -3,6 +3,8 @@ import {
   composeRequestSchema,
   errorResponseSchema,
   normaliseSign,
+  parseSettings,
+  SETTINGS_DEFAULTS,
   recognizeResponseSchema,
   SIGNS,
   speakRequestSchema,
@@ -60,5 +62,29 @@ describe('schemas', () => {
     expect(errorResponseSchema.safeParse({ error: { ...e.error, code: 'OOPS' } }).success).toBe(
       false,
     );
+  });
+});
+
+describe('settings', () => {
+  it('defaults when empty, null or junk', () => {
+    expect(parseSettings({})).toEqual(SETTINGS_DEFAULTS);
+    expect(parseSettings(null)).toEqual(SETTINGS_DEFAULTS);
+    expect(parseSettings('x')).toEqual(SETTINGS_DEFAULTS);
+    expect(SETTINGS_DEFAULTS).toMatchObject({ speakMode: 'auto', postToChat: false, speed: 1 });
+  });
+
+  it('falls back per field, keeping valid values', () => {
+    const s = parseSettings({
+      voiceId: 'david',
+      speed: 9,
+      postToChat: 'yes',
+      pauseMs: 2000,
+      extra: 1,
+    });
+    expect(s.voiceId).toBe('david');
+    expect(s.speed).toBe(1);
+    expect(s.postToChat).toBe(false);
+    expect(s.pauseMs).toBe(2000);
+    expect('extra' in s).toBe(false);
   });
 });
