@@ -35,7 +35,11 @@ export const sessionResponseSchema = z.object({
 export type SessionResponse = z.infer<typeof sessionResponseSchema>;
 
 // POST /v1/recognize (multipart: clip file, field `mime`)
-export const recognizeFieldsSchema = z.object({ mime: z.string().regex(/^video\/[a-z0-9.+-]+$/i) });
+export const recognizeFieldsSchema = z.object({
+  mime: z.string().regex(/^video\/[a-z0-9.+-]+$/i),
+  /** Clip length reported by the recorder; the API rejects clips over MAX_CLIP_SECONDS. */
+  durationMs: z.coerce.number().positive().optional(),
+});
 export const candidateSchema = z.object({
   sign: signOrUnknownSchema,
   confidence: z.number().min(0).max(1),

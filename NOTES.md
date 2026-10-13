@@ -130,3 +130,10 @@ M0 foundations · M1 API + mock + fake-meet · M2 design system/Storybook · M3 
 - Extension build tool: WXT (MV3 first-class, MAIN-world content scripts at document_start).
 - Meet chat posting default OFF. English only v1.
 - Working repo root: `Test/audion/`. The sibling `Test/signvoice/` is an earlier Python benchmark project and is unrelated; do not modify it.
+- Mock `/v1/speak` returns a generated tone as `audio/wav` (not mp3); the extension must decode via `decodeAudioData`, which sniffs format. Live mode returns `audio/mpeg`.
+- `/v1/recognize` accepts an optional `durationMs` field; the API rejects clips over 5 s with `CLIP_TOO_LARGE`.
+- `/v1/session` body is `{ installId: uuid }`. `ALLOWED_ORIGINS` is a comma list; `*` allows all (dev only). Any request with a disallowed `Origin` (incl. meet.google.com) is rejected 401.
+- `/v1/compose` rejects non-vocabulary glosses with 400, and falls back to the rule-based composer if a model sentence fails the grounding guard (`apps/api/src/services/composeGuard.ts`).
+- Rate limiting is an in-memory fixed window (per instance). Fine for demo traffic; revisit before scaling Cloud Run beyond one instance.
+- Logs: Pino redacts Authorization/cookie, including the multipart plugin's trace-level header log (found by `privacy.test.ts`).
+- Demo: `pnpm build && apps/api/scripts/demo.sh`. Fake Meet: `pnpm --filter @audion/fake-meet dev` (http://localhost:4173).

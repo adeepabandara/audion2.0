@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Fake Meet</title>
+    <link rel="stylesheet" href="/fake-meet.css" />
+    <!-- Audion's dev build injects its MAIN-world script at document_start, before this runs. -->
+    <script src="/fake-meet.js" defer></script>
+  </head>
+  <body>
+    <main class="stage" aria-label="Meeting">
+      <div class="grid" id="grid">
+        <section class="tile" data-participant="Priya">
+          <span class="avatar">P</span><span class="name">Priya</span>
+        </section>
+        <section class="tile" data-participant="Marcus">
+          <span class="avatar">M</span><span class="name">Marcus</span>
+        </section>
+        <section class="tile" data-participant="Lena">
+          <span class="avatar">L</span><span class="name">Lena</span>
+        </section>
+        <section class="tile" data-participant="You" id="self">
+          <video id="selfVideo" autoplay muted playsinline></video
+          ><span class="avatar" id="selfAvatar">A</span><span class="name">You (Alex)</span>
+        </section>
+      </div>
+      <div id="captions" class="captions" aria-live="polite" hidden></div>
+    </main>
+
+    <aside id="chat" class="chat" hidden aria-label="In-call messages">
+      <h2>In-call messages</h2>
+      <ol id="chatLog"></ol>
+      <form id="chatForm">
+        <textarea id="chatInput" aria-label="Send a message" placeholder="Send a message"></textarea
+        ><button type="submit" aria-label="Send a message to everyone">Send</button>
+      </form>
+    </aside>
+
+    <div class="controls" role="toolbar" aria-label="Call controls" id="controls">
+      <button id="mic" aria-label="Turn off microphone" aria-pressed="true">Mic</button>
+      <button id="cam" aria-label="Turn off camera" aria-pressed="true">Cam</button>
+      <button id="cc" aria-label="Turn on captions" aria-pressed="false">CC</button>
+      <button id="chatBtn" aria-label="Chat with everyone" aria-pressed="false">Chat</button>
+      <button id="join" class="join">Join call</button>
+      <button id="leave" class="leave" aria-label="Leave call" hidden>Leave</button>
+    </div>
+    <div
+      id="micMeter"
+      class="meter"
+      title="Outgoing mic level (what other participants would hear)"
+    >
+      <i></i>
+    </div>
+  </body>
+</html>
