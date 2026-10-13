@@ -1,0 +1,29 @@
+node_modules/
+dist/
+.output/
+.wxt/
+storybook-static/
+coverage/
+playwright-report/
+test-results/
+
+# Secrets: never commit
+.env
+.env.*
+!.env.example
+*.pem
+service-account*.json
+*-key.json
+credentials*.json
+
+# Video / clips / datasets: never commit
+*.webm
+*.mp4
+*.mov
+*.jsonl
+clips/
+data/
+popsign*/
+!tools/eval/fixtures/*.landmarks.json
+
+.DS_Store
