@@ -1,6 +1,7 @@
 import '@audion/ui/styles.css';
 import { createRoot } from 'react-dom/client';
 import { AudionApp } from '../panel/AudionApp';
+import { createDefaultSession } from '../panel/defaultSession';
 import '../panel/panel.css';
 
 // Dev builds can also run on the local fake Meet page: AUDION_FAKE_MEET=1 pnpm --filter @audion/extension build
@@ -20,8 +21,13 @@ export default defineContentScript({
       isolateEvents: ['keydown', 'keyup', 'keypress'],
       onMount(container) {
         const root = createRoot(container);
+        const session = createDefaultSession(
+          browser.runtime.getURL('/tracker.html'),
+          container.getRootNode(),
+        );
         root.render(
           <AudionApp
+            session={session}
             portalContainer={container}
             alwaysShow={FAKE_MEET && location.hostname === 'localhost'}
           />,

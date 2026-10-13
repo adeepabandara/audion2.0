@@ -9,10 +9,22 @@ export interface PopoverProps {
   anchor: ReactNode;
   title: string;
   children: ReactNode;
+  /**
+   * Default true. Pass false inside a host page we do not own: clicks inside a Shadow DOM can be mistaken for
+   * outside clicks, so only Esc (or the content) dismisses.
+   */
+  dismissOnOutside?: boolean;
 }
 
 /** Popover anchored to existing content; used for the low-confidence confirm prompt. */
-export function Popover({ open, onOpenChange, anchor, title, children }: PopoverProps) {
+export function Popover({
+  open,
+  onOpenChange,
+  anchor,
+  title,
+  children,
+  dismissOnOutside = true,
+}: PopoverProps) {
   return (
     <RadixPopover.Root open={open} onOpenChange={onOpenChange}>
       <RadixPopover.Anchor asChild>
@@ -25,6 +37,7 @@ export function Popover({ open, onOpenChange, anchor, title, children }: Popover
           align="start"
           sideOffset={8}
           aria-label={title}
+          onInteractOutside={dismissOnOutside ? undefined : (e) => e.preventDefault()}
         >
           <p className="au-popover__title">{title}</p>
           {children}

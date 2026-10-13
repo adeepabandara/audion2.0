@@ -5,15 +5,36 @@ import * as settingsModule from '../lib/settings';
 import { createSettingsStore } from '../lib/settings';
 import { memoryStore } from '../lib/storage';
 import { AudionApp } from './AudionApp';
+import { AudionSession, type SessionDeps } from './session';
 import { createPanelStore } from './store';
 
 vi.mock('../lib/messages', async (orig) => ({ ...(await orig<object>()), send: vi.fn() }));
+
+function fakeSession(overrides: Partial<SessionDeps> = {}) {
+  const track = { stop: vi.fn() };
+  const stream = { getTracks: () => [track] } as unknown as MediaStream;
+  const deps: SessionDeps = {
+    tracker: { start: async () => {}, detect: async () => null, stop: vi.fn() },
+    getCamera: async () => stream,
+    createRecorder: () => ({ arm() {}, disarm() {}, signStarted() {}, finish: async () => null }),
+    send: async () => ({ ok: true, mode: 'mock', confidenceThreshold: 0.5 }),
+    settings: () => ({ holdTimeMs: 400, pauseMs: 1500 }),
+    luminance: () => 120,
+    now: () => 0,
+    setInterval: () => 1,
+    clearInterval: () => {},
+    setTimeout: (fn, ms) => setTimeout(fn, ms),
+    clearTimeout: (id) => clearTimeout(id as ReturnType<typeof setTimeout>),
+    ...overrides,
+  };
+  return { session: new AudionSession(deps), track };
+}
 
 let host: HTMLElement;
 let root: Root;
 
 /** Mounts the app exactly like the content script does: React inside a Shadow root. */
-async function mount() {
+async function mount(session = fakeSession().session) {
   const settings = createSettingsStore(memoryStore());
   vi.spyOn(settingsModule, 'getSettingsStore').mockReturnValue(settings);
   const prefs = memoryStore();
@@ -26,12 +47,19 @@ async function mount() {
   shadow.append(container);
   root = createRoot(container);
   await act(async () => {
-    root.render(<AudionApp portalContainer={container} alwaysShow panelStore={panelStore} />);
+    root.render(
+      <AudionApp
+        session={session}
+        portalContainer={container}
+        alwaysShow
+        panelStore={panelStore}
+      />,
+    );
   });
   await waitFor(() =>
     expect(within(container).getByRole('group', { name: 'Audion' })).toBeTruthy(),
   );
-  return { ui: within(container), container, shadow, settings, prefs, panelStore };
+  return { ui: within(container), container, shadow, settings, prefs, panelStore, session };
 }
 
 beforeEach(() => {
@@ -61,7 +89,7 @@ describe('Audion in a Shadow root', () => {
   it('toggling On updates the status; expanding and collapsing is remembered', async () => {
     const { ui, prefs } = await mount();
     fireEvent.click(ui.getByRole('switch', { name: 'Audion' }));
-    expect(ui.getByRole('status').textContent).toBe('Ready');
+    await waitFor(() => expect(ui.getByRole('status').textContent).toBe('Ready'));
 
     fireEvent.click(ui.getByRole('button', { name: 'Expand Audion' }));
     expect(ui.getByRole('region', { name: 'Audion panel' })).toBeTruthy();
@@ -86,7 +114,14 @@ describe('Audion in a Shadow root', () => {
     host.attachShadow({ mode: 'open' }).append(container);
     root = createRoot(container);
     await act(async () =>
-      root.render(<AudionApp portalContainer={container} alwaysShow panelStore={panelStore} />),
+      root.render(
+        <AudionApp
+          session={fakeSession().session}
+          portalContainer={container}
+          alwaysShow
+          panelStore={panelStore}
+        />,
+      ),
     );
     const card = await within(container).findByRole('region', { name: 'Audion panel' });
     expect(card.style.right).toBe('200px');
@@ -171,5 +206,135 @@ describe('Audion in a Shadow root', () => {
     await act(async () => settings.useStore.getState().update({ theme: 'light' }));
     expect(container.querySelector('.ap-layer')?.getAttribute('data-theme')).toBe('light');
     expect(ui.getByRole('group', { name: 'Audion' })).toBeTruthy();
+  });
+});
+
+describe('recognition UI', () => {
+  const recognised = (sign: 'hello' | 'tomorrow', confidence: number | null) =>
+    ({ type: 'RECOGNISED', sign, confidence, threshold: 0.5 }) as const;
+
+  async function on(session = fakeSession().session) {
+    const app = await mount(session);
+    fireEvent.click(app.ui.getByRole('button', { name: 'Expand Audion' }));
+    fireEvent.click(app.ui.getByRole('switch', { name: 'Audion' }));
+    await waitFor(() => expect(app.ui.getByRole('status').textContent).toBe('Ready'));
+    return app;
+  }
+
+  it('turning On starts the camera and Off releases it', async () => {
+    const { session, track } = fakeSession();
+    const { ui } = await on(session);
+    expect(session.getState().on).toBe(true);
+    fireEvent.click(ui.getByRole('switch', { name: 'Audion' }));
+    expect(track.stop).toHaveBeenCalled();
+    expect(ui.getByRole('status').textContent).toBe('Off');
+  });
+
+  it('shows recognised signs as chips: normal ones as confirmed, low-confidence ones with a question mark', async () => {
+    const { session } = fakeSession();
+    const { ui } = await on(session);
+    await act(async () => {
+      session.dispatch({ type: 'CLIP_READY' });
+      session.dispatch(recognised('hello', 0.9));
+      session.dispatch({ type: 'CLIP_READY' });
+      session.dispatch(recognised('tomorrow', 0.3));
+    });
+    const row = ui.getByRole('group', { name: 'Recognised signs' });
+    expect(within(row).getByText('hello')).toBeTruthy();
+    expect(within(row).getByText(/low confidence/)).toBeTruthy();
+  });
+
+  it('asks "Did you mean …?" for a low-confidence sign; Yes confirms it', async () => {
+    const { session } = fakeSession();
+    const { ui } = await on(session);
+    await act(async () => {
+      session.dispatch({ type: 'CLIP_READY' });
+      session.dispatch(recognised('tomorrow', 0.3));
+    });
+    const dialog = await ui.findByRole('dialog', { name: 'Did you mean “tomorrow”?' });
+    expect(within(dialog).getByText('Enter')).toBeTruthy();
+    fireEvent.click(within(dialog).getByRole('button', { name: /Yes/ }));
+    await waitFor(() => expect(ui.queryByRole('dialog')).toBeNull());
+    expect(session.getState().chips[0]?.state).toBe('confirmed');
+  });
+
+  it('Try again, and Esc, remove the unsure sign', async () => {
+    for (const how of ['button', 'escape'] as const) {
+      const { session } = fakeSession();
+      const { ui } = await on(session);
+      await act(async () => {
+        session.dispatch({ type: 'CLIP_READY' });
+        session.dispatch(recognised('tomorrow', 0.3));
+      });
+      const dialog = await ui.findByRole('dialog', { name: 'Did you mean “tomorrow”?' });
+      if (how === 'button')
+        fireEvent.click(within(dialog).getByRole('button', { name: /Try again/ }));
+      else fireEvent.keyDown(dialog, { key: 'Escape' });
+      await waitFor(() => expect(session.getState().chips).toEqual([]));
+      await act(async () => root.unmount());
+      host.remove();
+    }
+    // afterEach unmounts again; give it a mounted tree to unmount.
+    root = createRoot(document.createElement('div'));
+    host = document.createElement('div');
+  });
+
+  it('expands the pill by itself when a sign needs confirming', async () => {
+    const { session } = fakeSession();
+    const { ui, panelStore } = await mount(session);
+    await act(async () => {
+      session.dispatch({ type: 'TURN_ON' });
+      session.dispatch({ type: 'CAMERA_READY' });
+      session.dispatch({ type: 'CLIP_READY' });
+      session.dispatch(recognised('tomorrow', 0.3));
+    });
+    await waitFor(() => expect(panelStore.useStore.getState().expanded).toBe(true));
+    expect(await ui.findByRole('dialog', { name: /Did you mean/ })).toBeTruthy();
+  });
+
+  it('shows each problem with an icon, a label and guidance', async () => {
+    const cases: Array<
+      [Parameters<ReturnType<typeof fakeSession>['session']['dispatch']>[0], string, RegExp]
+    > = [
+      [{ type: 'LIGHT', dark: true }, 'Poor lighting', /Move to a brighter spot/],
+      [{ type: 'ONLINE', online: false }, 'Reconnecting…', /saved and will be sent/],
+      [
+        { type: 'CLIP_DISCARDED', reason: 'tooShort' },
+        'Couldn’t recognize that',
+        /try again slowly/,
+      ],
+      [{ type: 'HANDS_EDGE', out: true }, 'Hands out of frame', /inside the outline/],
+    ];
+    for (const [event, label, hint] of cases) {
+      const { session } = fakeSession();
+      const { ui, container } = await on(session);
+      await act(async () => session.dispatch(event));
+      expect(container.querySelector('.au-pill')?.textContent).toBe(label);
+      expect(ui.getByText(hint)).toBeTruthy();
+      expect(container.querySelector('.au-banner .au-icon')).toBeTruthy(); // never colour alone
+      await act(async () => root.unmount());
+      host.remove();
+      root = createRoot(document.createElement('div'));
+      host = document.createElement('div');
+    }
+  });
+
+  it('camera blocked: explains, offers Fix permissions steps and Try again', async () => {
+    const getCamera = vi
+      .fn<() => Promise<MediaStream>>()
+      .mockRejectedValueOnce(Object.assign(new Error('x'), { name: 'NotAllowedError' }));
+    const { session, track } = fakeSession({ getCamera });
+    getCamera.mockResolvedValueOnce({ getTracks: () => [track] } as unknown as MediaStream);
+    const { ui } = await mount(session);
+    fireEvent.click(ui.getByRole('switch', { name: 'Audion' }));
+    expect(await ui.findByText(/Chrome is blocking the camera/)).toBeTruthy(); // pill auto-expanded
+
+    fireEvent.click(ui.getByRole('button', { name: 'Fix permissions' }));
+    expect(ui.getByText(/camera icon at the right end/)).toBeTruthy();
+    expect(ui.getByRole('button', { name: 'Open Chrome camera settings' })).toBeTruthy();
+
+    fireEvent.click(ui.getByRole('button', { name: 'Try again' }));
+    await waitFor(() => expect(session.getState().on).toBe(true));
+    expect(getCamera).toHaveBeenCalledTimes(2);
   });
 });

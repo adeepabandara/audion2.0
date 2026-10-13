@@ -8,7 +8,7 @@ Audion is a Chrome extension (Manifest V3) that recognises isolated American Sig
 
 **Limitation:** other participants cannot see Audion's local overlay. They hear the voice (so Meet's own live captions caption it) and can optionally receive sentences in Meet chat.
 
-Status: M4 (API with mock mode, design system, onboarding pages, panel and pill on Meet). See [NOTES.md](NOTES.md) for architecture and rules.
+Status: M5 (API with mock mode, design system, onboarding, panel, camera, hand tracking and sign recognition). See [NOTES.md](NOTES.md) for architecture and rules.
 
 ## Development
 
@@ -31,3 +31,5 @@ pnpm --filter @audion/extension build                      # then load apps/exte
 The welcome page opens on install. Storybook: `pnpm --filter @audion/ui storybook`.
 
 To try the panel without a real call: `pnpm --filter @audion/extension harness`, then `pnpm --filter @audion/fake-meet dev` and open http://localhost:4173. To run the real extension on the fake page, build with `AUDION_FAKE_MEET=1`.
+
+Hand tracking uses MediaPipe Hand Landmarker (Apache-2.0), bundled in the extension. See `apps/extension/MODELS.md`.

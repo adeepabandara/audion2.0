@@ -3,6 +3,7 @@ import type { ComposeResponse, ErrorCode, RecognizeResponse } from '@audion/shar
 /** Messages from extension pages / content scripts to the service worker. Binary data travels as base64. */
 export type Request =
   | { type: 'api/health' }
+  | { type: 'ui/openCameraSettings' }
   | { type: 'api/speak'; text: string; voiceId: string; speed: number }
   | { type: 'api/recognize'; clipBase64: string; mime: string; durationMs: number }
   | { type: 'api/compose'; signs: string[]; tone?: 'neutral' | 'polite' };
@@ -12,15 +13,17 @@ export interface Failure {
   error: { code: ErrorCode | 'NETWORK'; message: string; retryable: boolean };
 }
 
-export type ResponseFor<R extends Request> = R extends { type: 'api/health' }
-  ? { ok: true; mode: 'live' | 'mock' } | Failure
-  : R extends { type: 'api/speak' }
-    ? { ok: true; audioBase64: string; contentType: string } | Failure
-    : R extends { type: 'api/recognize' }
-      ? ({ ok: true } & RecognizeResponse) | Failure
-      : R extends { type: 'api/compose' }
-        ? ({ ok: true } & ComposeResponse) | Failure
-        : never;
+export type ResponseFor<R extends Request> = R extends { type: 'ui/openCameraSettings' }
+  ? { ok: true }
+  : R extends { type: 'api/health' }
+    ? { ok: true; mode: 'live' | 'mock'; confidenceThreshold?: number } | Failure
+    : R extends { type: 'api/speak' }
+      ? { ok: true; audioBase64: string; contentType: string } | Failure
+      : R extends { type: 'api/recognize' }
+        ? ({ ok: true } & RecognizeResponse) | Failure
+        : R extends { type: 'api/compose' }
+          ? ({ ok: true } & ComposeResponse) | Failure
+          : never;
 
 export function toBase64(bytes: ArrayBuffer | Uint8Array): string {
   const u8 = bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes);

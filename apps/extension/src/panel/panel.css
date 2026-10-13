@@ -159,3 +159,51 @@
   color: var(--au-text-2);
   font-size: var(--au-text-xs);
 }
+
+/* Camera preview, landmark overlay, hints */
+.ap-hidden-video {
+  position: fixed;
+  right: 0;
+  bottom: 0;
+  width: 2px;
+  height: 2px;
+  opacity: 0.01;
+  pointer-events: none;
+}
+.ap-preview {
+  position: relative;
+  overflow: hidden;
+}
+.ap-preview__video,
+.ap-preview__dots,
+.ap-guide {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+.ap-preview__video {
+  object-fit: cover;
+  transform: scaleX(-1);
+}
+.ap-guide {
+  color: rgb(255 255 255 / 75%);
+  pointer-events: none;
+}
+.ap-stack {
+  display: grid;
+  gap: 12px;
+}
+.ap-steps {
+  margin: 0;
+  padding-left: 20px;
+  color: var(--au-text);
+  display: grid;
+  gap: 4px;
+}
+.ap-actions {
+  flex-wrap: wrap;
+}
+.ap-stack .ap-actions > * {
+  flex: 0 1 auto;
+}

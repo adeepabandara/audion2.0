@@ -12,7 +12,7 @@ describe('healthz and session', () => {
   it('reports mock mode', async () => {
     ({ app } = await makeApp());
     const res = await app.inject('/healthz');
-    expect(res.json()).toEqual({ ok: true, mode: 'mock' });
+    expect(res.json()).toEqual({ ok: true, mode: 'mock', confidenceThreshold: 0.5 });
   });
 
   it('issues a 15 minute token and rejects bad install IDs', async () => {
