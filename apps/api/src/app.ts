@@ -106,7 +106,14 @@ export async function buildApp(
     limiter.check(`install:${req.installId}`, config.limits.perInstall);
   };
 
-  app.get('/healthz', async (): Promise<HealthResponse> => ({ ok: true, mode: services.mode }));
+  app.get(
+    '/healthz',
+    async (): Promise<HealthResponse> => ({
+      ok: true,
+      mode: services.mode,
+      confidenceThreshold: config.confidenceThreshold,
+    }),
+  );
 
   app.post('/v1/session', async (req) => {
     limiter.check(`session:${req.ip}`, config.limits.sessionPerIp);

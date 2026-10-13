@@ -90,7 +90,7 @@ export function createApiClient({
   });
 
   return {
-    async health(): Promise<Result<{ mode: 'live' | 'mock' }>> {
+    async health(): Promise<Result<{ mode: 'live' | 'mock'; confidenceThreshold?: number }>> {
       try {
         const res = await fetchImpl(`${baseUrl}/healthz`);
         if (!res.ok) return await failure(res);

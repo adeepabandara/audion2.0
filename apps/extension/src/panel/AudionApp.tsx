@@ -1,7 +1,8 @@
-import { ThemeRoot, type Status } from '@audion/ui';
+import { ThemeRoot } from '@audion/ui';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { locateControlBar, isMeetCallPath } from '../lib/meetDom';
 import { getSettingsStore } from '../lib/settings';
+import { pendingChip, viewOf } from './machine';
 import { PanelCard } from './PanelCard';
 import { Pill } from './Pill';
 import { SettingsDrawer } from './SettingsDrawer';
@@ -13,8 +14,10 @@ import {
   FALLBACK_BAR_CLEARANCE,
   type Position,
 } from './position';
+import type { AudionSession } from './session';
 import { getPanelStore } from './store';
 import { useDrag } from './useDrag';
+import { useSessionState } from './useSession';
 
 const CARD_FALLBACK = { width: 336, height: 480 };
 
@@ -50,6 +53,7 @@ function useOnCallPage(anywhere: boolean): boolean {
 }
 
 export interface AudionAppProps {
+  session: AudionSession;
   portalContainer?: HTMLElement | null;
   /** Show on every page of the host (dev pages such as fake-meet), not only on call URLs. */
   alwaysShow?: boolean;
@@ -58,6 +62,7 @@ export interface AudionAppProps {
 }
 
 export function AudionApp({
+  session,
   portalContainer,
   alwaysShow = false,
   panelStore = getPanelStore(),
@@ -65,13 +70,24 @@ export function AudionApp({
   const settings = getSettingsStore();
   const usePanel = panelStore.useStore;
   const theme = settings.useStore((s) => s.settings.theme);
-  const { expanded, enabled, position, drawer, ready } = usePanel();
-  const { setExpanded, setEnabled, setPosition, openDrawer, closeDrawer } = usePanel.getState();
+  const { expanded, position, drawer, ready } = usePanel();
+  const { setExpanded, setPosition, openDrawer, closeDrawer } = usePanel.getState();
+  const machine = useSessionState(session);
+  const view = viewOf(machine);
 
   useEffect(() => {
     void settings.init();
     void panelStore.init();
   }, [settings, panelStore]);
+
+  // Things that need the signer's attention must not hide in the collapsed pill.
+  const needsAttention = machine.problems.includes('cameraBlocked') || !!pendingChip(machine);
+  useEffect(() => {
+    if (needsAttention && ready && !expanded) setExpanded(true);
+  }, [needsAttention, ready, expanded, setExpanded]);
+
+  // Camera and tracker run only while Audion is On and the page is in use.
+  useEffect(() => () => session.turnOff(), [session]);
 
   const clearance = useBarClearance();
   const onCall = useOnCallPage(alwaysShow);
@@ -101,18 +117,32 @@ export function AudionApp({
     },
   });
 
+  // Leaving the call page (SPA navigation) switches Audion off and releases the camera.
+  useEffect(() => {
+    if (!onCall) session.turnOff();
+  }, [onCall, session]);
+
   if (!ready || !onCall) return null;
 
-  const status: Status = enabled ? 'ready' : 'off';
-  const toggle = (on: boolean) => setEnabled(on);
+  const toggle = (on: boolean) => (on ? void session.turnOn() : session.turnOff());
 
   return (
     <ThemeRoot theme={theme} portalContainer={portalContainer} className="ap-layer">
+      {/* Analysis source for the tracker and the light check; the visible preview is inside the card. */}
+      <video
+        ref={(el) => session.attachVideo(el)}
+        className="ap-hidden-video"
+        muted
+        playsInline
+        autoPlay
+        aria-hidden="true"
+      />
       {expanded ? (
         <PanelCard
           ref={cardRef}
-          status={status}
-          enabled={enabled}
+          session={session}
+          state={machine}
+          view={view}
           onToggle={toggle}
           onCollapse={() => setExpanded(false)}
           onOpenSettings={() => openDrawer('settings')}
@@ -122,8 +152,9 @@ export function AudionApp({
         />
       ) : (
         <Pill
-          status={status}
-          enabled={enabled}
+          status={view.status}
+          label={view.label}
+          enabled={machine.on}
           onToggle={toggle}
           onExpand={() => setExpanded(true)}
           style={{ right: EDGE_MARGIN * 2, bottom: clearance }}

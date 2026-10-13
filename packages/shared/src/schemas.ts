@@ -74,5 +74,7 @@ export type SpeakRequest = z.infer<typeof speakRequestSchema>;
 export const healthResponseSchema = z.object({
   ok: z.literal(true),
   mode: z.enum(['live', 'mock']),
+  /** Below this, the extension asks the signer to confirm a recognised sign. */
+  confidenceThreshold: z.number().min(0).max(1).optional(),
 });
 export type HealthResponse = z.infer<typeof healthResponseSchema>;
