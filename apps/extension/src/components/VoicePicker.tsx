@@ -1,9 +1,9 @@
 import { Banner, Slider, VoiceCard } from '@audion/ui';
 import { MAX_SPEED, MIN_SPEED, VOICES, type VoiceId } from '@audion/shared';
 import { useEffect, useRef, useState } from 'react';
-import { playAudio, type Playback } from '../../lib/audioPlayer';
-import { fromBase64, send } from '../../lib/messages';
-import { getSettingsStore } from '../../lib/settings';
+import { playAudio, type Playback } from '../lib/audioPlayer';
+import { fromBase64, send } from '../lib/messages';
+import { getSettingsStore } from '../lib/settings';
 
 const DESCRIPTIONS: Record<VoiceId, string> = {
   aria: 'Warm, female, US English',
@@ -13,7 +13,7 @@ const DESCRIPTIONS: Record<VoiceId, string> = {
 };
 export const SAMPLE_LINE = 'Hello, I’m signing with Audion. Please wait a moment.';
 
-export function VoicePicker() {
+export function VoicePicker({ heading = true }: { heading?: boolean }) {
   const { useStore } = getSettingsStore();
   const { voiceId, speed } = useStore((s) => s.settings);
   const update = useStore((s) => s.update);
@@ -49,10 +49,10 @@ export function VoicePicker() {
   }
 
   return (
-    <div className="ob__stack">
-      <h2>Pick your voice</h2>
+    <div style={{ display: 'grid', gap: 12 }}>
+      {heading && <h2>Pick your voice</h2>}
       {error && <Banner tone="error">{error}</Banner>}
-      <div className="ob__voices" role="radiogroup" aria-label="Voice">
+      <div style={{ display: 'grid', gap: 8 }} role="radiogroup" aria-label="Voice">
         {VOICES.map((v) => (
           <VoiceCard
             key={v.id}

@@ -9,15 +9,35 @@ export interface DrawerProps {
   title: string;
   description?: string;
   children: ReactNode;
+  /**
+   * Default true: dims the page, traps focus and marks the rest of the document aria-hidden.
+   * Pass false inside a host page we do not own (Meet): no dimming, no aria-hidden on the host's DOM,
+   * and clicks outside never dismiss (Radix mis-detects clicks inside a Shadow DOM as outside).
+   */
+  modal?: boolean;
+  /** Drawer width in px (capped to the viewport). */
+  width?: number;
 }
 
-/** Slides in from the right edge of the viewport/panel. Focus is trapped; Esc closes. */
-export function Drawer({ open, onOpenChange, title, description, children }: DrawerProps) {
+/** Panel anchored to the right edge of the viewport. Esc and the close button dismiss it. */
+export function Drawer({
+  open,
+  onOpenChange,
+  title,
+  description,
+  children,
+  modal = true,
+  width,
+}: DrawerProps) {
   return (
-    <Dialog.Root open={open} onOpenChange={onOpenChange}>
+    <Dialog.Root open={open} onOpenChange={onOpenChange} modal={modal}>
       <ThemedPortal>
-        <Dialog.Overlay className="au-overlay" />
-        <Dialog.Content className="au-drawer">
+        {modal && <Dialog.Overlay className="au-overlay" />}
+        <Dialog.Content
+          className="au-drawer"
+          style={width ? { width: `min(${width}px, 100vw)` } : undefined}
+          onInteractOutside={modal ? undefined : (e) => e.preventDefault()}
+        >
           <div className="au-drawer__head">
             <Dialog.Title className="au-drawer__title">{title}</Dialog.Title>
             <Dialog.Close asChild>

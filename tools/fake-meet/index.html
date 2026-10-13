@@ -7,6 +7,8 @@
     <link rel="stylesheet" href="/fake-meet.css" />
     <!-- Audion's dev build injects its MAIN-world script at document_start, before this runs. -->
     <script src="/fake-meet.js" defer></script>
+    <!-- Optional: Audion UI harness (pnpm --filter @audion/extension harness). 404s harmlessly if not built. -->
+    <script src="/audion-harness.js" defer></script>
   </head>
   <body>
     <main class="stage" aria-label="Meeting">

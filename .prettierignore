@@ -3,3 +3,4 @@ dist
 .output
 .wxt
 storybook-static
+tools/fake-meet/audion-harness.js

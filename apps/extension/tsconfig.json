@@ -7,5 +7,12 @@
     "lib": ["ES2022", "DOM", "DOM.Iterable"],
     "types": ["chrome", "vite/client"]
   },
-  "include": ["src", "wxt.config.ts", "vitest.config.ts", ".wxt/wxt.d.ts"]
+  "include": [
+    "src",
+    "dev",
+    "vite.harness.config.ts",
+    "wxt.config.ts",
+    "vitest.config.ts",
+    ".wxt/wxt.d.ts"
+  ]
 }

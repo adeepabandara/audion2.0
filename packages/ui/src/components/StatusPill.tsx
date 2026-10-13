@@ -1,6 +1,7 @@
 import { Icon, type IconName } from '../icons';
 
 export type Status =
+  | 'off'
   | 'ready'
   | 'seeing'
   | 'signing'
@@ -10,6 +11,7 @@ export type Status =
   | 'attention';
 
 export const STATUS_META: Record<Status, { icon: IconName; label: string; tone: string }> = {
+  off: { icon: 'pause', label: 'Off', tone: 'muted' },
   ready: { icon: 'check-circle', label: 'Ready', tone: 'ok' },
   seeing: { icon: 'eye', label: 'Seeing you', tone: 'active' },
   signing: { icon: 'hand', label: 'Signing', tone: 'active' },

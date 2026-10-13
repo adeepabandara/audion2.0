@@ -1,0 +1,161 @@
+/* Content-script UI. Lives inside the Shadow root, so none of this can leak into (or be broken by) Meet. */
+:host {
+  all: initial;
+}
+.ap-layer.au-root {
+  position: fixed;
+  inset: 0;
+  z-index: 2147483000;
+  background: transparent;
+  pointer-events: none;
+}
+.ap-layer > * {
+  pointer-events: auto;
+}
+.ap-pill,
+.ap-card {
+  position: fixed;
+  background: var(--au-bg);
+  color: var(--au-text);
+  border: 1px solid var(--au-divider);
+  box-shadow: var(--au-shadow);
+}
+.ap-pill {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px 6px 10px;
+  border-radius: 999px;
+}
+.ap-card {
+  width: 336px; /* ~320 of content once a scrollbar appears on short windows */
+  max-height: calc(100vh - 16px);
+  overflow-x: hidden;
+  overflow-y: auto;
+  display: grid;
+  gap: 12px;
+  padding: 12px;
+  border-radius: var(--au-radius-lg);
+}
+.ap-card__head,
+.ap-actions,
+.ap-foot,
+.ap-chips {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.ap-chips {
+  flex-wrap: wrap;
+  min-height: 36px;
+}
+.ap-spacer {
+  flex: 1;
+}
+.ap-grip {
+  display: grid;
+  place-items: center;
+  width: var(--au-target);
+  height: var(--au-target);
+  margin-left: -8px;
+  border: 0;
+  border-radius: var(--au-radius-md);
+  background: transparent;
+  color: var(--au-text-2);
+  cursor: grab;
+  touch-action: none;
+}
+.ap-grip:hover {
+  background: var(--au-surface);
+}
+.ap-preview {
+  display: grid;
+  place-items: center;
+  align-content: center;
+  gap: 6px;
+  aspect-ratio: 4 / 3;
+  border-radius: var(--au-radius-md);
+  background: var(--au-surface);
+  border: 1px solid var(--au-divider);
+  color: var(--au-text-2);
+}
+.ap-sentence {
+  min-height: 64px;
+  padding: 12px;
+  border-radius: var(--au-radius-md);
+  background: var(--au-surface);
+  font-size: var(--au-text-lg);
+  font-weight: 600;
+}
+.ap-actions > * {
+  flex: 1;
+}
+.ap-foot {
+  border-top: 1px solid var(--au-divider);
+  padding-top: 8px;
+}
+.ap-link {
+  color: var(--au-highlight);
+  font-weight: 600;
+}
+.ap-note {
+  color: var(--au-text-2);
+  font-size: var(--au-text-sm);
+  font-weight: 400;
+  margin: 0;
+}
+.ap-section {
+  display: grid;
+  gap: 12px;
+  padding: 16px 0;
+  border-top: 1px solid var(--au-divider);
+}
+.ap-section h3 {
+  margin: 0;
+  font-size: var(--au-text-md);
+}
+.ap-lang {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 8px;
+}
+.ap-lang li {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 32px;
+}
+.ap-lang--off {
+  color: var(--au-text-2);
+}
+.ap-signs {
+  list-style: none;
+  margin: 16px 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 12px;
+}
+.ap-sign {
+  display: grid;
+  gap: 4px;
+  padding: 12px;
+  background: var(--au-raised);
+  border: 1px solid var(--au-divider);
+  border-radius: var(--au-radius-md);
+}
+.ap-sign__art {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  color: var(--au-text);
+}
+.ap-sign strong {
+  font-size: var(--au-text-md);
+}
+.ap-sign span {
+  color: var(--au-text-2);
+  font-size: var(--au-text-xs);
+}

@@ -2,7 +2,7 @@ import { Button, Banner } from '@audion/ui';
 import { useState } from 'react';
 import { Calibration } from './Calibration';
 import { Shell, Steps } from './Shell';
-import { VoicePicker } from './VoicePicker';
+import { VoicePicker } from '../../components/VoicePicker';
 
 export function Setup({ onBack, onFinish }: { onBack(): void; onFinish(): void }) {
   const [passed, setPassed] = useState(false);

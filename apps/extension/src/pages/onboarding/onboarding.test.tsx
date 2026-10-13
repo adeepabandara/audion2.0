@@ -25,7 +25,7 @@ import { memoryStore } from '../../lib/storage';
 import * as settingsModule from '../../lib/settings';
 import { Permissions } from './Permissions';
 import { Setup } from './Setup';
-import { VoicePicker } from './VoicePicker';
+import { VoicePicker } from '../../components/VoicePicker';
 
 function useFreshSettings() {
   const store = createSettingsStore(memoryStore());
