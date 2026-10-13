@@ -4,6 +4,7 @@ import { AppError } from '../../errors.js';
 import type { Recognizer, RecognizeInput } from '../types.js';
 import type { GenAIClient } from './client.js';
 import { scoreFromLogprobs } from './logprobs.js';
+import { TIMEOUTS, withTimeout } from './timeout.js';
 
 const TOP_LOGPROBS = 5;
 /** Gemini 3.x spends output tokens on thinking, so a small limit can leave the answer empty. */
@@ -30,24 +31,28 @@ export class GeminiRecognizer implements Recognizer {
   constructor(
     private readonly client: GenAIClient,
     private readonly model: string,
+    private readonly timeoutMs: number = TIMEOUTS.recognizeMs,
   ) {}
 
   private call(clip: string, mime: string, withLogprobs: boolean) {
-    return this.client.models.generateContent({
-      model: this.model,
-      contents: [
-        {
-          role: 'user',
-          parts: [{ inlineData: { mimeType: mime, data: clip } }, { text: RECOGNIZE_PROMPT }],
+    return withTimeout(this.timeoutMs, (abortSignal) =>
+      this.client.models.generateContent({
+        model: this.model,
+        contents: [
+          {
+            role: 'user',
+            parts: [{ inlineData: { mimeType: mime, data: clip } }, { text: RECOGNIZE_PROMPT }],
+          },
+        ],
+        config: {
+          temperature: 0,
+          maxOutputTokens: MAX_OUTPUT_TOKENS,
+          candidateCount: 1,
+          abortSignal,
+          ...(withLogprobs ? { responseLogprobs: true, logprobs: TOP_LOGPROBS } : {}),
         },
-      ],
-      config: {
-        temperature: 0,
-        maxOutputTokens: MAX_OUTPUT_TOKENS,
-        candidateCount: 1,
-        ...(withLogprobs ? { responseLogprobs: true, logprobs: TOP_LOGPROBS } : {}),
-      },
-    });
+      }),
+    );
   }
 
   async recognize({ clip, mime }: RecognizeInput) {
@@ -62,7 +67,7 @@ export class GeminiRecognizer implements Recognizer {
         this.logprobs = false;
         res = await this.call(data, mime, false);
       } else {
-        throw mapVertexError(e);
+        throw e instanceof AppError ? e : mapVertexError(e);
       }
     }
 

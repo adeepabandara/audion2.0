@@ -25,4 +25,8 @@ export function isToTracker(data: unknown): data is ToTracker {
 }
 
 /** Pages allowed to embed the tracker (mirrors the content-script matches). */
-export const ALLOWED_HOST_ORIGINS = ['https://meet.google.com', 'http://localhost:4173'];
+// The local fake Meet origin exists only in dev/e2e builds (AUDION_FAKE_MEET=1), never in a release.
+export const ALLOWED_HOST_ORIGINS = [
+  'https://meet.google.com',
+  ...(process.env.AUDION_FAKE_MEET === '1' ? ['http://localhost:4173'] : []),
+];

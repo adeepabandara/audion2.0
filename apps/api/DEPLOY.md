@@ -77,7 +77,7 @@ gcloud builds submit --config apps/api/cloudbuild.yaml --substitutions _IMAGE=$I
 ## 3. Deploy
 
 `ALLOWED_ORIGINS` must be the extension's origin: `chrome-extension://<extension-id>` (find the ID on
-`chrome://extensions`, or after publishing). Put env vars in a file so the commas and colons survive:
+`chrome://extensions`, or after publishing; see `docs/extension-id.md` for a stable ID in development). Put env vars in a file so the commas and colons survive:
 
 ```yaml
 # env.yaml (do not commit if it holds anything you consider sensitive; it holds no secrets)
@@ -89,6 +89,9 @@ COMPOSE_MODEL: gemini-3.5-flash
 COMPOSE_LOCATION: global
 CONFIDENCE_THRESHOLD: '0.5'
 ALLOWED_ORIGINS: chrome-extension://EXTENSION_ID
+# Cloud Run's front end appends the real client IP to X-Forwarded-For; trust exactly that one hop so the per-IP
+# rate limits apply per user, not to Google's proxy as a whole.
+TRUST_PROXY_HOPS: '1'
 ```
 
 ```bash

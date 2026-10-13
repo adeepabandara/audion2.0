@@ -6,6 +6,8 @@ export default defineConfig({
   publicDir: false, // don't copy extension icons into tools/fake-meet
   define: {
     'process.env.NODE_ENV': '"production"',
+    'process.env.AUDION_FAKE_MEET': '"1"',
+    'process.env.AUDION_E2E': '""',
     'import.meta.env.VITE_API_URL': JSON.stringify(
       process.env.VITE_API_URL ?? 'http://localhost:8080',
     ),

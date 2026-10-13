@@ -20,6 +20,8 @@ const envSchema = z.object({
   ALLOWED_ORIGINS: z.string().default(''),
   RATE_LIMIT_PER_IP_PER_MIN: z.coerce.number().int().positive().default(120),
   RATE_LIMIT_PER_INSTALL_PER_MIN: z.coerce.number().int().positive().default(60),
+  // Proxies in front of the service whose X-Forwarded-For entry we trust (Cloud Run: 1). 0 = use the socket address.
+  TRUST_PROXY_HOPS: z.coerce.number().int().min(0).max(5).default(0),
   SESSION_LIMIT_PER_IP_PER_MIN: z.coerce.number().int().positive().default(10),
 });
 
@@ -36,6 +38,7 @@ export interface Config {
   jwtSecretFromEnv: boolean;
   allowedOrigins: string[];
   limits: { perIp: number; perInstall: number; sessionPerIp: number };
+  trustProxyHops: number;
 }
 
 export function loadConfig(env: Record<string, string | undefined> = process.env): Config {
@@ -53,6 +56,7 @@ export function loadConfig(env: Record<string, string | undefined> = process.env
     allowedOrigins: e.ALLOWED_ORIGINS.split(',')
       .map((s) => s.trim())
       .filter(Boolean),
+    trustProxyHops: e.TRUST_PROXY_HOPS,
     limits: {
       perIp: e.RATE_LIMIT_PER_IP_PER_MIN,
       perInstall: e.RATE_LIMIT_PER_INSTALL_PER_MIN,

@@ -118,6 +118,7 @@ export class AudionSession {
   private noticeTimer: unknown;
   private voiceMuted = false;
   private pauseSeen = false;
+  private externalFrames = false;
   private sentenceSigns: string[] = [];
   private signLog: string[] = [];
   private offChannel: (() => void) | null = null;
@@ -384,9 +385,15 @@ export class AudionSession {
     );
   }
 
+  /** Tests only: ignore the live capture loop so injected frames are the sole input. */
+  setExternalFrames(on: boolean): void {
+    this.externalFrames = on;
+  }
+
   /** Process one frame. The capture loop calls this; tests call it directly with scripted frames. */
   async tick(frameOverride?: LandmarkFrame): Promise<void> {
     if (this.busy || !this.state.on || this.state.starting) return;
+    if (!frameOverride && this.externalFrames) return;
     const video = this.video;
     if (!frameOverride && !video) return;
     this.busy = true;
