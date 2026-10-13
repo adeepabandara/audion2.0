@@ -10,6 +10,7 @@ export default tseslint.config(
       '**/.wxt/**',
       '**/node_modules/**',
       '**/storybook-static/**',
+      'tools/fake-meet/audion-harness.js',
     ],
   },
   js.configs.recommended,

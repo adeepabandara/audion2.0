@@ -150,6 +150,9 @@ button.au-chip {
 .au-pill--active .au-icon {
   color: var(--au-highlight);
 }
+.au-pill--muted .au-icon {
+  color: var(--au-text-2);
+}
 .au-pill--warn .au-icon {
   color: var(--au-warning);
 }
@@ -389,7 +392,7 @@ button.au-chip {
   border: 1px solid var(--au-border);
   border-radius: var(--au-radius-lg);
   box-shadow: var(--au-shadow);
-  z-index: 2147483000;
+  z-index: 2147483003;
 }
 .au-popover__title {
   font-size: var(--au-text-md);
@@ -408,13 +411,13 @@ button.au-chip {
   border-radius: 8px;
   font-size: var(--au-text-xs);
   font-weight: 600;
-  z-index: 2147483000;
+  z-index: 2147483003;
 }
 .au-overlay {
   position: fixed;
   inset: 0;
   background: rgb(0 0 0 / 45%);
-  z-index: 2147482999;
+  z-index: 2147483001;
 }
 .au-drawer {
   position: fixed;
@@ -428,7 +431,7 @@ button.au-chip {
   color: var(--au-text);
   border-left: 1px solid var(--au-border);
   box-shadow: var(--au-shadow);
-  z-index: 2147483000;
+  z-index: 2147483002;
 }
 .au-drawer__head {
   display: flex;

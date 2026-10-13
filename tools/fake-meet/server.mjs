@@ -7,7 +7,8 @@ const port = Number(process.env.PORT ?? 4173);
 const types = { '.html': 'text/html', '.js': 'text/javascript', '.css': 'text/css' };
 
 createServer(async (req, res) => {
-  const name = req.url === '/' || !req.url ? '/index.html' : req.url.split('?')[0];
+  const path = (req.url ?? '/').split('?')[0];
+  const name = path === '/' ? '/index.html' : path;
   if (name.includes('..') || !/^\/[\w.-]+$/.test(name)) {
     res.writeHead(404).end();
     return;
