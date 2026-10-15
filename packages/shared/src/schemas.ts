@@ -7,6 +7,7 @@ import {
   MAX_TRANSCRIPT_CHARS,
   MIN_SPEED,
 } from './constants.js';
+import { LANGUAGE_CODES, TRANSLATE_CODES } from './languages.js';
 import { SIGNS } from './signs.js';
 import { VOICE_IDS } from './voices.js';
 
@@ -84,11 +85,28 @@ export type ContextRequest = z.infer<typeof contextRequestSchema>;
 export const contextResponseSchema = z.object({ summary: z.string().max(MAX_CONTEXT_CHARS) });
 export type ContextResponse = z.infer<typeof contextResponseSchema>;
 
+// POST /v1/translate: Ola's sentence into another language. The text is held in memory for the call, never stored or
+// logged (only its length is).
+export const translateRequestSchema = z.object({
+  text: z.string().min(1).max(MAX_SPEAK_CHARS),
+  language: z.enum(TRANSLATE_CODES),
+});
+export type TranslateRequest = z.infer<typeof translateRequestSchema>;
+export const translateResponseSchema = z.object({
+  text: z
+    .string()
+    .min(1)
+    .max(MAX_SPEAK_CHARS * 2),
+});
+export type TranslateResponse = z.infer<typeof translateResponseSchema>;
+
 // POST /v1/speak
 export const speakRequestSchema = z.object({
   text: z.string().min(1).max(MAX_SPEAK_CHARS),
   voiceId: z.enum(VOICE_IDS),
   speed: z.number().min(MIN_SPEED).max(MAX_SPEED),
+  /** Language of the text (default English). A translated sentence is spoken in its own language. */
+  language: z.enum(LANGUAGE_CODES).optional(),
 });
 export type SpeakRequest = z.infer<typeof speakRequestSchema>;
 

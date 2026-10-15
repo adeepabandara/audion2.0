@@ -115,6 +115,7 @@ export function AudionApp({
     feedbackConsent,
     speakMode,
     meetingContext,
+    language,
   } = settings.useStore((s) => s.settings);
   const { expanded, position, drawer, ready, voiceMuted } = usePanel();
   const { setExpanded, setPosition, setVoiceMuted, openDrawer, closeDrawer } = usePanel.getState();
@@ -223,6 +224,8 @@ export function AudionApp({
               onToggle={toggle}
               voiceMuted={voiceMuted}
               onVoiceMutedChange={setVoiceMuted}
+              language={language}
+              onLanguageChange={(l) => void settings.useStore.getState().update({ language: l })}
               onCollapse={() => setExpanded(false)}
               onOpenSettings={() => openDrawer('settings')}
               onOpenSigns={() => openDrawer('signs')}

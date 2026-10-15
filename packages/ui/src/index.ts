@@ -1,5 +1,6 @@
 export { ThemeRoot, ThemedPortal, type Theme, type ThemeRootProps } from './theme';
 export { Icon, ICON_NAMES, type IconName, type IconProps } from './icons';
+export { BrainSparkle } from './components/BrainSparkle';
 export { Banner, type BannerProps, type BannerTone } from './components/Banner';
 export { Button, type ButtonProps } from './components/Button';
 export { Card, type CardProps } from './components/Card';

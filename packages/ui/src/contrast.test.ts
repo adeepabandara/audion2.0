@@ -40,6 +40,10 @@ const PAIRS: Array<[string, string, number]> = [
       ['--au-text', bg, 4.5],
       ['--au-text-2', bg, 4.5],
       ['--au-highlight', bg, 4.5],
+      // the meeting-context indicator's text gradient (blue, purple, red)
+      ['--au-gemini-1', bg, 4.5],
+      ['--au-gemini-2', bg, 4.5],
+      ['--au-gemini-3', bg, 4.5],
       ['--au-success', bg, 4.5],
       ['--au-warning', bg, 4.5],
       ['--au-error', bg, 4.5],

@@ -8,6 +8,7 @@ export default defineConfig({
     'process.env.NODE_ENV': '"production"',
     'process.env.AUDION_FAKE_MEET': '"1"',
     'process.env.AUDION_E2E': '""',
+    'process.env.AUDION_WEB': '""', // only the public web demo build sets this
     'import.meta.env.VITE_API_URL': JSON.stringify(
       process.env.VITE_API_URL ?? 'http://localhost:8080',
     ),

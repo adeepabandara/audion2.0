@@ -1,4 +1,4 @@
-import { getVoice, SIGNS, VOICES, type SpeakRequest } from '@audion/shared';
+import { getLanguage, getVoice, SIGNS, VOICES, type SpeakRequest } from '@audion/shared';
 import { AppError } from '../../errors.js';
 import { composeByRules } from '../mock/composer.js';
 import type { Speaker } from '../types.js';
@@ -8,7 +8,7 @@ import { TIMEOUTS, withTimeout } from './timeout.js';
 export interface TtsClient {
   synthesizeSpeech(req: {
     input: { text: string };
-    voice: { languageCode: string; name: string };
+    voice: { languageCode: string; name?: string; ssmlGender?: 'FEMALE' | 'MALE' };
     audioConfig: { audioEncoding: 'MP3'; speakingRate: number };
   }): Promise<[{ audioContent?: Uint8Array | string | null }, ...unknown[]]>;
 }
@@ -45,10 +45,17 @@ export class CloudSpeaker implements Speaker {
     await Promise.all(Array.from({ length: 4 }, worker));
   }
 
-  async speak({ text, voiceId, speed }: SpeakRequest) {
+  async speak({ text, voiceId, speed, language }: SpeakRequest) {
     const voice = getVoice(voiceId);
     if (!voice) throw new AppError('BAD_REQUEST', 'Unknown voice.');
-    const cacheKey = FIXED_PHRASES.has(text) ? `${voiceId}|${speed}|${text}` : null;
+    // A translated sentence: only the language code and the voice's gender are given, so Google picks one of its
+    // voices for that language (no voice names to keep verified here).
+    const translated =
+      language !== undefined && language !== 'en' ? getLanguage(language) : undefined;
+    if (language !== undefined && language !== 'en' && !translated) {
+      throw new AppError('BAD_REQUEST', 'Unknown language.');
+    }
+    const cacheKey = !translated && FIXED_PHRASES.has(text) ? `${voiceId}|${speed}|${text}` : null;
     const hit = cacheKey ? this.cache.get(cacheKey) : undefined;
     if (hit) return { audio: hit, contentType: 'audio/mpeg' };
     let audio: Uint8Array | string | null | undefined;
@@ -56,7 +63,12 @@ export class CloudSpeaker implements Speaker {
       [{ audioContent: audio }] = await withTimeout(this.timeoutMs, () =>
         this.client.synthesizeSpeech({
           input: { text },
-          voice: { languageCode: voice.languageCode, name: voice.ttsName },
+          voice: translated
+            ? {
+                languageCode: translated.tts,
+                ssmlGender: voice.gender === 'female' ? 'FEMALE' : 'MALE',
+              }
+            : { languageCode: voice.languageCode, name: voice.ttsName },
           audioConfig: { audioEncoding: 'MP3', speakingRate: speed },
         }),
       );

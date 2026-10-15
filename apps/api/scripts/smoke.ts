@@ -1,5 +1,5 @@
 // Checks a deployed Ola site end to end without a camera: page, health, session, sentence, voice.
-// Costs a couple of cheap calls (no sign recognition, so no tuned-model call). Usage:
+// Costs a few cheap calls (no sign recognition, so no tuned-model call). Usage:
 //   pnpm --filter @audion/api smoke https://YOUR-SERVICE-URL
 import { parseArgs } from './args.js';
 
@@ -42,8 +42,11 @@ await check('tracker, hand model and wasm', async () => {
   }
   return '';
 });
-await check('healthz', async () => {
-  const h = (await (await fetch(`${base}/healthz`)).json()) as { mode?: string; modelId?: string };
+await check('health', async () => {
+  const h = (await (await fetch(`${base}/v1/health`)).json()) as {
+    mode?: string;
+    modelId?: string;
+  };
   need(h.mode === 'live', `mode is ${h.mode}, expected live (MOCK=0)`);
   return `${h.mode} ${h.modelId}`;
 });
@@ -66,6 +69,32 @@ await check('compose (two signs, Gemini)', async () => {
   });
   need(r.ok, `status ${r.status}`);
   return `"${((await r.json()) as { sentence?: string }).sentence}"`;
+});
+await check('translate (Gemini, Spanish)', async () => {
+  const r = await fetch(`${base}/v1/translate`, {
+    method: 'POST',
+    headers: authed(),
+    body: JSON.stringify({ text: 'Hello, please wait.', language: 'es' }),
+  });
+  need(r.ok, `status ${r.status}`);
+  const text = ((await r.json()) as { text?: string }).text ?? '';
+  need(text.length > 0 && !text.includes('test mode'), `no real translation: "${text}"`);
+  return `"${text}"`;
+});
+await check('speak a translation (Google TTS, Spanish)', async () => {
+  const r = await fetch(`${base}/v1/speak`, {
+    method: 'POST',
+    headers: authed(),
+    body: JSON.stringify({
+      text: 'Hola, por favor espera.',
+      voiceId: 'aria',
+      speed: 1,
+      language: 'es',
+    }),
+  });
+  const bytes = (await r.arrayBuffer()).byteLength;
+  need(r.ok && bytes > 1000, `status ${r.status}, ${bytes} bytes`);
+  return `${bytes} bytes`;
 });
 await check('speak (Google TTS)', async () => {
   const r = await fetch(`${base}/v1/speak`, {

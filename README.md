@@ -125,6 +125,13 @@ resources, changes IAM or billing, or starts tuning jobs.
 
 - Sign recognition model tuned on **PopSign ASL v1.0** (CC BY 4.0), Georgia Tech and the Deaf Professional Arts Network.
 - Hand tracking: Google **MediaPipe** Hand Landmarker (Apache-2.0), bundled in the extension.
+- Sentences: Google **Gemma 4** (on device in the web demo) and **Gemini** (Google Cloud); voices: Google Cloud Text-to-Speech.
 - Built with React, Radix UI, Fastify, Zustand, WXT and Vite (all MIT or similar).
 
 License: not chosen yet.
+
+## Third-party notices
+
+- **Fluent UI System Icons** (Microsoft), the `brain-sparkle-16-regular` icon, used for the meeting-context badge
+  (`packages/ui/src/components/BrainSparkle.tsx`). MIT licence, Copyright (c) 2020 Microsoft Corporation. Source:
+  https://github.com/microsoft/fluentui-system-icons

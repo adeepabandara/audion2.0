@@ -15,6 +15,9 @@
   --au-primary: #0f766e;
   --au-on-primary: #ffffff;
   --au-highlight: #0f766e; /* links, icons, active chips */
+  --au-gemini-1: #1a5fd8; /* text gradient for the meeting-context indicator; >= 4.5:1 on bg and surface */
+  --au-gemini-2: #8a4dc8;
+  --au-gemini-3: #c2305a;
   --au-focus: #0f766e;
   --au-success: #15803d;
   --au-warning: #b45309;
@@ -46,6 +49,9 @@
   --au-primary: #0f766e;
   --au-on-primary: #ffffff;
   --au-highlight: #2dd4bf;
+  --au-gemini-1: #6aa0ff;
+  --au-gemini-2: #b190e6;
+  --au-gemini-3: #ef7a96;
   --au-focus: #2dd4bf;
   --au-success: #22c55e;
   --au-warning: #f59e0b;
@@ -67,6 +73,9 @@
     --au-primary: #0f766e;
     --au-on-primary: #ffffff;
     --au-highlight: #2dd4bf;
+    --au-gemini-1: #6aa0ff;
+    --au-gemini-2: #b190e6;
+    --au-gemini-3: #ef7a96;
     --au-focus: #2dd4bf;
     --au-success: #22c55e;
     --au-warning: #f59e0b;

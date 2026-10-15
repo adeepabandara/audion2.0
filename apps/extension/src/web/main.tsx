@@ -3,6 +3,7 @@
 // same site (Cloud Run serves both). A small shim answers chrome.runtime.sendMessage by calling the API directly.
 import { Wordmark } from '@audion/ui';
 import ui from '@audion/ui/styles.css?inline';
+import { useEffect, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { createMessageHandler } from '../background/handler';
 import { createApiClient } from '../lib/api';
@@ -21,6 +22,11 @@ import { MeetingContext } from '../panel/meetingContext';
 import { ScriptedCaptions } from './demoCaptions';
 import { createGemma, GEMMA_SIZE_GB, type GemmaStatus } from './gemmaComposer';
 import { LocalVoice } from './localVoice';
+import { PipelineBus } from './pipeline/bus';
+import { ArchitectureView } from './pipeline/ArchitectureView';
+
+/** Collects what really happens, for the "behind the scenes" view. */
+const bus = new PipelineBus();
 
 const api = createApiClient({
   baseUrl: import.meta.env.VITE_API_URL ?? '',
@@ -41,7 +47,16 @@ async function send(req: Request, ctx: { tabId: string }) {
       return { ok: true as const, sentence, writer: 'Gemma, on this device' };
     }
   }
+  const started = performance.now();
   const res = await handle(req, ctx);
+  if (req.type.startsWith('api/')) {
+    bus.emit({
+      kind: 'api',
+      path: req.type,
+      ok: !!(res as { ok?: boolean }).ok,
+      ms: Math.round(performance.now() - started),
+    });
+  }
   if (req.type === 'api/compose' && res.ok) {
     // One sign is a fixed rule on the server; two or more are written by Gemini on Google Cloud.
     const writer =
@@ -135,23 +150,32 @@ let voiceSource = 'Google Text-to-Speech';
 const service = { mock: false, modelId: '' };
 const cloudName = () => (service.mock ? 'the mock recogniser (test mode, not Gemini)' : 'Gemini');
 const status = document.getElementById('service-status');
-if (status) {
-  fetch('/healthz')
-    .then(
-      (r) =>
-        r.json() as Promise<{ ok?: boolean; mode?: string; modelId?: string; voices?: string }>,
-    )
-    .then((h) => {
-      voiceSource =
-        h.voices === 'mock' ? 'a placeholder tone (mock mode)' : 'Google Text-to-Speech';
-      status.textContent = h.ok
+const say = (text: string) => {
+  if (status) status.textContent = text;
+};
+fetch('/v1/health')
+  .then(
+    (r) => r.json() as Promise<{ ok?: boolean; mode?: string; modelId?: string; voices?: string }>,
+  )
+  .then((h) => {
+    service.mock = h.mode === 'mock';
+    service.modelId = h.modelId ?? '';
+    bus.emit({
+      kind: 'service',
+      mode: h.mode ?? 'mock',
+      modelId: h.modelId ?? '',
+      voices: h.voices ?? '',
+    });
+    voiceSource = h.voices === 'mock' ? 'a placeholder tone (mock mode)' : 'Google Text-to-Speech';
+    say(
+      h.ok
         ? `Online. Recognition model: ${h.modelId ?? 'unknown'}. Voices: ${
             h.voices === 'google' ? 'Google Cloud Text-to-Speech' : 'placeholder tone (mock mode)'
           }.`
-        : 'The service answered, but reported a problem.';
-    })
-    .catch(() => (status.textContent = 'The service cannot be reached right now.'));
-}
+        : 'The service answered, but reported a problem.',
+    );
+  })
+  .catch(() => say('The service cannot be reached right now.'));
 
 // The Gemma switch. It turns itself on when the visitor first turns Ola on, unless they have unticked it before
 // or their browser asks for less data; their choice is remembered.
@@ -306,6 +330,8 @@ if (traceList) {
         return `Sentence “${e.sentence}” written by ${e.writer} (${sec(e.ms)}).`;
       case 'context':
         return `Meeting context updated from ${e.chars} characters of captions: “${e.summary}” (${sec(e.ms)}).`;
+      case 'translate':
+        return `Translated to ${e.language} (${sec(e.ms)}).`;
       case 'voice': {
         const v = VOICES.find((x) => x.id === e.voiceId);
         return `Voice ${v?.label ?? e.voiceId} by ${voiceSource} (${sec(e.ms)}).`;
@@ -415,3 +441,45 @@ void getSettingsStore()
     }
     void getSettingsStore().useStore.getState().update({ meetingContext: true });
   });
+
+// ---- "Behind the scenes": feed the real events of this page into the live architecture view. ----
+session.onTrace((e) => bus.emit(e)); // signs, Gemini checks, sentences, voice and meeting summaries
+session.onFrame((f) => bus.emit({ kind: 'frame', hands: f.hands.length }));
+let wasSigning = false;
+session.subscribe((st) => {
+  if (st.signing !== wasSigning) {
+    wasSigning = st.signing;
+    bus.emit({ kind: 'signing', on: st.signing });
+  }
+});
+gemma.subscribe((g) => bus.emit({ kind: 'gemma', state: g.state }));
+captions.view((recent) => {
+  const last = recent[recent.length - 1];
+  if (last) bus.emit({ kind: 'caption', speaker: last.speaker, text: last.text });
+});
+
+/** The full-screen view and the button that opens it. Focus returns to the button when it closes. */
+function ArchitectureHost() {
+  const [open, setOpen] = useState(false);
+  useEffect(() => {
+    document.body.classList.toggle('arch-open', open);
+  }, [open]);
+  useEffect(() => {
+    const button = document.getElementById('open-architecture');
+    const show = () => setOpen(true);
+    button?.addEventListener('click', show);
+    return () => button?.removeEventListener('click', show);
+  }, []);
+  return (
+    <ArchitectureView
+      bus={bus}
+      open={open}
+      onClose={() => {
+        setOpen(false);
+        document.getElementById('open-architecture')?.focus();
+      }}
+    />
+  );
+}
+const architectureRoot = document.getElementById('architecture-root');
+if (architectureRoot) createRoot(architectureRoot).render(<ArchitectureHost />);

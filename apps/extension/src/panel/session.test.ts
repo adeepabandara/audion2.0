@@ -1,3 +1,4 @@
+import type { LanguageCode } from '@audion/shared';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { LandmarkFrame } from '../lib/landmarks';
 import { makeFrames, makeHand, type Segment } from '../testing/fixtures';
@@ -18,6 +19,7 @@ function harness(
     trackerStart?: () => Promise<void>;
     compose?: (r: unknown) => unknown;
     speak?: (r: unknown) => unknown;
+    translate?: (r: unknown) => unknown;
     /** The on-device classifier's answer; when given the tracker offers `classify`. */
     classify?: () => { sign: string; confidence: number; threshold: number } | null;
     /** A meeting-context tracker; when given the session can follow the meeting. */
@@ -52,6 +54,7 @@ function harness(
       // These tests exercise the optional cloud double-check; the device-only mode has its own tests below.
       cloudCheck: true,
       meetingContext: false,
+      language: 'en' as LanguageCode,
     },
   };
   let recognizeCalls = 0;
@@ -80,6 +83,8 @@ function harness(
             contentType: 'audio/wav',
           }
         );
+      if (req.type === 'api/translate')
+        return opts.translate?.(req) ?? { ok: true, text: 'Hola, por favor espera.' };
       if (req.type === 'transcript/add') return { ok: true };
       return (
         opts.recognize ??
@@ -198,7 +203,7 @@ describe('AudionSession', () => {
     await h.session.turnOn();
     await h.feed(ONE_SIGN);
     const s = h.session.getState();
-    expect(s.notice).toMatch(/daily recognition limit/);
+    expect(s.notice).toMatch(/Daily limit reached/);
     expect(s.chips).toEqual([]);
     expect(s.problems).toContain('notRecognised');
     expect(s.problems).not.toContain('offline'); // a cap is not a connection problem
@@ -311,7 +316,7 @@ describe('AudionSession', () => {
       { kind: 'still', ms: 800 },
     ]);
     expect(h.session.getState().problems).toContain('notRecognised');
-    expect(viewOf(h.session.getState()).hint).toBe('Try again slowly.');
+    expect(viewOf(h.session.getState()).hint).toBe('Sign again, slowly.');
     expect(h.recorder.finish).not.toHaveBeenCalled();
     expect(h.sent.some((r) => (r as { type: string }).type === 'api/recognize')).toBe(false);
   });
@@ -757,7 +762,7 @@ describe('AudionSession: compose and speak', () => {
       await h.feed(ONE_SIGN);
       const s = h.session.getState();
       expect(s.chips).toMatchObject([{ sign: 'no', checking: false, corrected: { was: 'yes' } }]);
-      expect(s.notice).toMatch(/changed .yes. to .no./);
+      expect(s.notice).toMatch(/Changed .yes. to .no./);
     });
 
     it('keeps the device answer when the cloud cannot tell', async () => {
@@ -906,9 +911,10 @@ describe('AudionSession: compose and speak', () => {
     function fakeContext(initial: string | null = null) {
       let summary = initial;
       let state: ContextUpdate['state'] = 'off';
+      let updating = false;
       const changes = new Set<(u: ContextUpdate) => void>();
       const refreshes = new Set<(i: { summary: string; ms: number; chars: number }) => void>();
-      const emit = () => changes.forEach((l) => l({ state, summary }));
+      const emit = () => changes.forEach((l) => l({ state, summary, updating }));
       return {
         start: vi.fn(() => {
           state = 'waiting';
@@ -924,6 +930,11 @@ describe('AudionSession: compose and speak', () => {
         onRefreshed: (l: (i: { summary: string; ms: number; chars: number }) => void) => (
           refreshes.add(l), () => refreshes.delete(l)
         ),
+        /** Pretend a summary refresh is in flight (or finished). */
+        setUpdating(on: boolean) {
+          updating = on;
+          emit();
+        },
         learn(text: string) {
           summary = text;
           state = 'following';
@@ -944,15 +955,24 @@ describe('AudionSession: compose and speak', () => {
       h.settings.meetingContext = true;
       await h.session.turnOn();
       expect(context.start).toHaveBeenCalledTimes(1);
-      expect(h.session.getState().context).toEqual({ state: 'waiting', summary: null });
+      expect(h.session.getState().context).toEqual({
+        state: 'waiting',
+        summary: null,
+        updating: false,
+      });
       context.learn('Planning the demo for Friday.');
       expect(h.session.getState().context).toEqual({
         state: 'following',
         summary: 'Planning the demo for Friday.',
+        updating: false,
       });
       h.session.turnOff();
       expect(context.stop).toHaveBeenCalled();
-      expect(h.session.getState().context).toEqual({ state: 'off', summary: null });
+      expect(h.session.getState().context).toEqual({
+        state: 'off',
+        summary: null,
+        updating: false,
+      });
     });
 
     it('does not follow the meeting while the setting is off', async () => {
@@ -1011,6 +1031,17 @@ describe('AudionSession: compose and speak', () => {
       expect(composeRequests(h)[0]).not.toHaveProperty('context');
     });
 
+    it('passes "a refresh is in flight" on to the panel state', async () => {
+      const context = fakeContext('Planning the demo.');
+      const h = harness({ context });
+      h.settings.meetingContext = true;
+      await h.session.turnOn();
+      context.setUpdating(true);
+      expect(h.session.getState().context.updating).toBe(true);
+      context.setUpdating(false);
+      expect(h.session.getState().context.updating).toBe(false);
+    });
+
     it('reports each summary refresh in the pipeline trace', async () => {
       const context = fakeContext();
       const h = harness({ context });
@@ -1023,5 +1054,57 @@ describe('AudionSession: compose and speak', () => {
         { kind: 'context', summary: 'Planning the demo.', ms: 1200, chars: 300 },
       ]);
     });
+  });
+});
+
+describe('AudionSession: live translation', () => {
+  const signAndPause: Segment[] = [...ONE_SIGN, { kind: 'none', ms: 2200 }];
+  const ofType = (h: ReturnType<typeof harness>, type: string) =>
+    h.sent.filter((r) => (r as { type: string }).type === type);
+
+  it('does not translate, and speaks without a language, while the language is English', async () => {
+    const h = harness();
+    await h.session.turnOn();
+    await h.feed(signAndPause);
+    await flush();
+    expect(ofType(h, 'api/translate')).toHaveLength(0);
+    expect(ofType(h, 'api/speak')[0]).not.toHaveProperty('language');
+  });
+
+  it('translates the sentence, shows and speaks the translation in its language', async () => {
+    const h = harness();
+    h.settings.language = 'es';
+    const events: TraceEvent[] = [];
+    h.session.onTrace((e) => events.push(e));
+    await h.session.turnOn();
+    await h.feed(signAndPause);
+    await flush();
+    expect(ofType(h, 'api/translate')[0]).toMatchObject({
+      text: 'Hello, please wait.',
+      language: 'es',
+    });
+    expect(ofType(h, 'api/speak')[0]).toMatchObject({
+      text: 'Hola, por favor espera.',
+      language: 'es',
+    });
+    expect(h.session.getState().caption).toBe('Hola, por favor espera.');
+    expect(events.map((e) => e.kind)).toContain('translate');
+    expect(events.find((e) => e.kind === 'translate')).toMatchObject({ language: 'es' });
+  });
+
+  it('keeps the English sentence, and says so briefly, when translation fails', async () => {
+    const h = harness({
+      translate: () => ({
+        ok: false,
+        error: { code: 'MODEL_UNAVAILABLE', message: 'x', retryable: true },
+      }),
+    });
+    h.settings.language = 'fr';
+    await h.session.turnOn();
+    await h.feed(signAndPause);
+    await flush();
+    expect(ofType(h, 'api/speak')[0]).toMatchObject({ text: 'Hello, please wait.' });
+    expect(ofType(h, 'api/speak')[0]).not.toHaveProperty('language');
+    expect(h.session.getState().notice).toBe('Translation failed. Using English.');
   });
 });

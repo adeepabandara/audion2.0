@@ -128,6 +128,16 @@ describe('Audion in a Shadow root', () => {
     expect(parseInt(card.style.bottom)).toBe(bottom0); // clamped at the clearance
   });
 
+  it('picks a language for live translation from the card and saves it', async () => {
+    const { ui, settings } = await mount();
+    fireEvent.click(ui.getByRole('button', { name: 'Expand Ola' }));
+    const picker = ui.getByRole('combobox', { name: /Translate Ola/ }) as HTMLSelectElement;
+    expect(picker.value).toBe('en');
+    fireEvent.change(picker, { target: { value: 'es' } });
+    await waitFor(() => expect(settings.useStore.getState().settings.language).toBe('es'));
+    expect(picker.value).toBe('es');
+  });
+
   it('opens the settings drawer inside the shadow root and saves changes', async () => {
     const { ui, settings, shadow } = await mount();
     fireEvent.click(ui.getByRole('button', { name: 'Expand Ola' }));
@@ -166,7 +176,7 @@ describe('Audion in a Shadow root', () => {
     expect(await ui.findByText(/Call audio connected/)).toBeTruthy();
 
     await act(async () => env.voice.emitChannel({ hasChannel: false, micMuted: false }));
-    expect(await ui.findByText(/Not connected to the call/)).toBeTruthy();
+    expect(await ui.findByText(/Not in the call yet/)).toBeTruthy();
     expect(ui.queryByText(/Call audio connected/)).toBeNull();
   });
 
@@ -178,11 +188,11 @@ describe('Audion in a Shadow root', () => {
     expect(await ui.findByText(/Call audio connected/)).toBeTruthy();
 
     await act(async () => env.voice.emitDelivery(true));
-    expect(await ui.findByText(/your last sentence reached the call/)).toBeTruthy();
+    expect(await ui.findByText(/Call audio connected · sent/)).toBeTruthy();
 
     await act(async () => env.voice.emitDelivery(false));
-    expect(await ui.findByText(/Ola’s voice didn’t reach the call/)).toBeTruthy();
-    expect(ui.queryByText(/your last sentence reached the call/)).toBeNull();
+    expect(await ui.findByText(/Call can’t hear Ola/)).toBeTruthy();
+    expect(ui.queryByText(/Call audio connected · sent/)).toBeNull();
   });
 
   it('shows which recognition model is answering under About', async () => {
@@ -340,25 +350,138 @@ describe('recognition UI', () => {
     expect(follow).toHaveBeenLastCalledWith(false);
   });
 
-  it('says what it is waiting for, then shows the meeting summary under the signs', async () => {
+  it('shows the meeting context as an icon only, on the sentence card’s top-right corner', async () => {
     const { session } = fakeSession();
-    const { ui } = await on(session);
-    expect(ui.queryByText(/Meeting context/)).toBeNull();
+    const { shadow } = await on(session);
+    const wrap = shadow.querySelector('.ap-sentence-wrap') as HTMLElement;
+    const badge = wrap.querySelector('.ap-ctx') as HTMLElement;
+    // the badge is inside the sentence card's wrapper, next to the sentence box, and has no text of its own
+    expect(badge).toBeTruthy();
+    expect(wrap.querySelector('.ap-sentence')).toBeTruthy();
+    expect(badge.textContent).toBe('');
+    expect(badge.querySelector('svg.ap-ctx__icon')).toBeTruthy(); // the brain-sparkle icon
+    expect(badge.getAttribute('aria-label')).toBe('Meeting context: Meeting context off');
+    // no full-width row any more
+    expect(shadow.querySelector('.ap-brain')).toBeNull();
+  });
+
+  it('the icon shows the state: off, listening, analysing, and quicker while a summary is made', async () => {
+    const { session } = fakeSession();
+    const { shadow } = await on(session);
+    const badge = () => shadow.querySelector('.ap-ctx') as HTMLElement;
+    expect(badge().classList.contains('ap-ctx--live')).toBe(false);
+
     await act(async () => {
       session.dispatch({ type: 'CONTEXT', state: 'waiting', summary: null });
     });
-    expect(ui.getByText(/turn on captions \(CC\) in Meet/)).toBeTruthy();
+    expect(badge().getAttribute('aria-label')).toBe('Meeting context: Listening for the meeting…');
+    expect(badge().classList.contains('ap-ctx--live')).toBe(true);
+
     await act(async () => {
       session.dispatch({
         type: 'CONTEXT',
         state: 'following',
         summary: 'Planning the demo for Friday.',
+        updating: false,
       });
     });
-    expect(ui.queryByText(/turn on captions/)).toBeNull();
-    expect(ui.getByText(/Following the meeting:/).parentElement?.textContent).toContain(
-      'Planning the demo for Friday.',
+    expect(badge().getAttribute('aria-label')).toBe('Meeting context: Analysing the meeting…');
+    expect(badge().classList.contains('ap-ctx--live')).toBe(true);
+    expect(badge().classList.contains('ap-ctx--busy')).toBe(false);
+
+    await act(async () => {
+      session.dispatch({
+        type: 'CONTEXT',
+        state: 'following',
+        summary: 'Planning the demo for Friday.',
+        updating: true,
+      });
+    });
+    expect(badge().classList.contains('ap-ctx--busy')).toBe(true);
+  });
+
+  it('opens a panel beside the card on hover or focus: the title, then the summary word by word', async () => {
+    const { session } = fakeSession();
+    const { shadow } = await on(session);
+    const tip = () => shadow.querySelector('.ap-context-tip') as HTMLElement | null;
+    expect(tip()).toBeNull();
+    await act(async () => {
+      session.dispatch({
+        type: 'CONTEXT',
+        state: 'following',
+        summary: 'Planning the demo for Friday at three.',
+        updating: false,
+      });
+    });
+    await act(async () => {
+      fireEvent.focus(shadow.querySelector('.ap-ctx') as HTMLElement);
+    });
+    await waitFor(() => expect(tip()).toBeTruthy());
+    const title = tip()!.querySelector('.ap-context-tip__title') as HTMLElement;
+    expect(title.textContent).toBe('Analysing the meeting…');
+    expect(title.classList.contains('ap-gemini--live')).toBe(true); // gradient text that moves
+    // each word is its own element with its own delay, so the text arrives word by word
+    const words = [...tip()!.querySelectorAll('.ap-word')] as HTMLElement[];
+    expect(words.map((w) => w.textContent!.trim()).join(' ')).toBe(
+      'Planning the demo for Friday at three.',
     );
+    expect(words[0]!.style.getPropertyValue('--ap-i')).toBe('0');
+    expect(words.at(-1)!.style.getPropertyValue('--ap-i')).toBe(String(words.length - 1));
+    expect(tip()!.getAttribute('data-side')).toBe('left'); // beside the card, not over it
+    expect(tip()!.textContent).not.toContain('What Ola has picked up so far');
+  });
+
+  it('explains in the hover panel how to turn the meeting context on when it is off', async () => {
+    const { session } = fakeSession();
+    const { shadow } = await on(session);
+    await act(async () => {
+      fireEvent.focus(shadow.querySelector('.ap-ctx') as HTMLElement);
+    });
+    await waitFor(() => expect(shadow.querySelector('.ap-context-tip')).toBeTruthy());
+    const tip = shadow.querySelector('.ap-context-tip') as HTMLElement;
+    expect(tip.querySelector('.ap-context-tip__title')!.textContent).toBe('Meeting context off');
+    expect(tip.textContent).toMatch(/Turn it on in Settings/);
+  });
+
+  it('writes the status next to the toggle in the header, with its icon, and has no other status row', async () => {
+    const { session } = fakeSession();
+    const { ui, shadow } = await on(session);
+    const head = shadow.querySelector('.ap-card__head') as HTMLElement;
+    const status = head.querySelector('[role="status"]') as HTMLElement;
+    expect(status.classList.contains('au-pill')).toBe(true);
+    expect(status.classList.contains('au-pill--icon')).toBe(false); // words as well as the icon
+    expect(status.textContent).toBe('Ready');
+    expect(status.querySelector('svg')).toBeTruthy();
+    // the toggle is in the same header, right after the status
+    expect(status.nextElementSibling?.contains(ui.getByRole('switch', { name: 'Ola' }))).toBe(true);
+    // one status in the card, and no words written over the camera picture
+    expect(shadow.querySelectorAll('.ap-card [role="status"]')).toHaveLength(1);
+    expect(shadow.querySelector('.ap-preview__status')).toBeNull();
+  });
+
+  it('keeps the card layout fixed: signs in one row, everything else inside the body, footer outside it', async () => {
+    const env = fakeSession();
+    const { shadow } = await on(env.session);
+    const card = shadow.querySelector('.ap-card') as HTMLElement;
+    const body = card.querySelector('.ap-card__body') as HTMLElement;
+    const before = Array.from(card.children).map((c) => c.className);
+    await act(async () => {
+      for (const sign of ['hello', 'please', 'wait', 'thankyou', 'bye'] as const) {
+        env.session.dispatch({ type: 'CLIP_READY' });
+        env.session.dispatch({ type: 'RECOGNISED', sign, confidence: 0.9, threshold: 0 });
+      }
+      env.session.dispatch({ type: 'COMPOSE_START' });
+      env.session.dispatch({
+        type: 'COMPOSED',
+        sentence: 'Hello, please wait. Thank you, goodbye.',
+      });
+    });
+    // the same structure before and after: content fills the fixed rows, it does not add rows
+    expect(Array.from(card.children).map((c) => c.className)).toEqual(before);
+    expect(body.querySelectorAll('.ap-chips')).toHaveLength(1);
+    expect(Array.from(card.children).some((c) => c.classList.contains('ap-foot'))).toBe(true);
+    expect(body.querySelector('.ap-foot')).toBeNull();
+    expect(body.querySelectorAll('.ap-sentence-wrap .ap-ctx')).toHaveLength(1);
   });
 
   it('lets the signer turn on the Gemini double-check, which is off by default', async () => {
@@ -443,20 +566,19 @@ describe('recognition UI', () => {
     const cases: Array<
       [Parameters<ReturnType<typeof fakeSession>['session']['dispatch']>[0], string, RegExp]
     > = [
-      [{ type: 'LIGHT', dark: true }, 'Poor lighting', /Move to a brighter spot/],
-      [{ type: 'ONLINE', online: false }, 'Reconnecting…', /saved and will be sent/],
-      [
-        { type: 'CLIP_DISCARDED', reason: 'tooShort' },
-        'Couldn’t recognize that',
-        /try again slowly/,
-      ],
-      [{ type: 'HANDS_EDGE', out: true }, 'Hands out of frame', /inside the outline/],
+      [{ type: 'LIGHT', dark: true }, 'Poor lighting', /Needs more light/],
+      [{ type: 'ONLINE', online: false }, 'Reconnecting…', /Signs saved/],
+      [{ type: 'CLIP_DISCARDED', reason: 'tooShort' }, 'Couldn’t recognize that', /Sign again/],
+      [{ type: 'HANDS_EDGE', out: true }, 'Hands out of frame', /hands in the frame/],
     ];
     for (const [event, label, hint] of cases) {
       const { session } = fakeSession();
       const { ui, container } = await on(session);
       await act(async () => session.dispatch(event));
-      expect(container.querySelector('.au-pill')?.textContent).toBe(label);
+      // the header may show a shorter word ("Low light"); the full wording is always the pill's tooltip
+      const pill = container.querySelector('.au-pill') as HTMLElement;
+      expect(pill.title).toBe(label);
+      expect(pill.textContent!.length).toBeGreaterThan(0);
       expect(ui.getByText(hint)).toBeTruthy();
       expect(container.querySelector('.au-banner .au-icon')).toBeTruthy(); // never colour alone
       await act(async () => root.unmount());
@@ -464,6 +586,18 @@ describe('recognition UI', () => {
       root = createRoot(document.createElement('div'));
       host = document.createElement('div');
     }
+  });
+
+  it('writes the long statuses shorter in the header, with the full wording as the tooltip', async () => {
+    const { session } = fakeSession();
+    const { shadow } = await on(session);
+    const pill = () => shadow.querySelector('.ap-card__head .au-pill') as HTMLElement;
+    await act(async () => session.dispatch({ type: 'LIGHT', dark: true }));
+    expect(pill().textContent).toBe('Low light');
+    expect(pill().title).toBe('Poor lighting');
+    await act(async () => session.dispatch({ type: 'ONLINE', online: false }));
+    expect(pill().textContent).toBe('Offline');
+    expect(pill().title).toBe('Reconnecting…');
   });
 
   it('camera blocked: explains, offers Fix permissions steps and Try again', async () => {
@@ -474,7 +608,7 @@ describe('recognition UI', () => {
     getCamera.mockResolvedValueOnce({ getTracks: () => [track] } as unknown as MediaStream);
     const { ui } = await mount(session);
     fireEvent.click(ui.getByRole('switch', { name: 'Ola' }));
-    expect(await ui.findByText(/Chrome is blocking the camera/)).toBeTruthy(); // pill auto-expanded
+    expect(await ui.findByText(/Allow it for this site/)).toBeTruthy(); // pill auto-expanded
 
     fireEvent.click(ui.getByRole('button', { name: 'Fix permissions' }));
     expect(ui.getByText(/camera icon at the right end/)).toBeTruthy();
@@ -578,7 +712,7 @@ describe('speaking, captions and the end-of-call summary', () => {
     expect(caption.querySelector('[aria-label="Speaking"]')).toBeTruthy(); // wave icon with a text name
   });
 
-  it('Audion’s voice switch is remembered and tells the session', async () => {
+  it('Audion’s voice switch is remembered and tells the session, with no banner about it', async () => {
     const env = fakeSession();
     const { ui, prefs } = await onWith(env);
     fireEvent.click(ui.getByRole('switch', { name: 'Speak into the call' }));
@@ -586,16 +720,17 @@ describe('speaking, captions and the end-of-call summary', () => {
       expect(env.voice.configs.at(-1)).toEqual({ enabled: true, voiceMuted: true }),
     );
     expect(await prefs.get('panelPrefs')).toMatchObject({ voiceMuted: true });
-    expect(ui.getByText(/voice is off/)).toBeTruthy();
+    expect(ui.queryByText(/voice is off/)).toBeNull();
+    expect(ui.queryByText(/captions only/)).toBeNull();
   });
 
   it('warns when Meet’s own microphone is muted, since nobody could hear Audion', async () => {
     const env = fakeSession();
     const { ui } = await onWith(env);
     await act(async () => env.voice.emitChannel({ hasChannel: true, micMuted: true }));
-    expect(ui.getByText(/Your Meet microphone is muted/)).toBeTruthy();
+    expect(ui.getByText(/Mic muted/)).toBeTruthy();
     await act(async () => env.voice.emitChannel({ hasChannel: true, micMuted: false }));
-    expect(ui.queryByText(/Your Meet microphone is muted/)).toBeNull();
+    expect(ui.queryByText(/Mic muted/)).toBeNull();
   });
 
   it('shows the transcript when the call ends, can copy it, and clears it on close', async () => {

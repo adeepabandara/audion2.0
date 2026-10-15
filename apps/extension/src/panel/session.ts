@@ -53,7 +53,7 @@ export interface SessionDeps {
     Settings,
     'holdTimeMs' | 'pauseMs' | 'speakMode' | 'voiceId' | 'speed' | 'postToChat' | 'monitorVoice'
   > &
-    Partial<Pick<Settings, 'fastSigns' | 'cloudCheck' | 'meetingContext'>>;
+    Partial<Pick<Settings, 'fastSigns' | 'cloudCheck' | 'meetingContext' | 'language'>>;
   /** Voice into the call: the MAIN-world inject script behind a postMessage bridge. */
   voice: VoiceChannel;
   /**
@@ -94,6 +94,7 @@ export function defaultDeps(trackerFor: () => HandTracker): SessionDeps {
       fastSigns: true,
       cloudCheck: false,
       meetingContext: false,
+      language: 'en',
     }),
     voice: new VoiceBridge(),
     context: new MeetingContext({
@@ -143,7 +144,7 @@ interface Named {
 /** How much recent hand movement to keep for naming a sign on the device. A sign lasts at most 4 s. */
 const FRAME_BUFFER_MS = 6000;
 
-const CAP_NOTICE = 'Ola has reached its daily recognition limit. Try again tomorrow.';
+const CAP_NOTICE = 'Daily limit reached. Try tomorrow.';
 
 type Listener = (s: MachineState) => void;
 
@@ -161,6 +162,7 @@ export type TraceEvent =
     }
   | { kind: 'cloud'; role: 'check' | 'answer'; sign: string; ms: number; deviceSign?: string }
   | { kind: 'sentence'; sentence: string; writer: string; ms: number }
+  | { kind: 'translate'; language: string; ms: number }
   | { kind: 'voice'; voiceId: string; ms: number }
   | { kind: 'context'; summary: string; ms: number; chars: number };
 
@@ -195,6 +197,8 @@ export class AudionSession {
   private pauseSeen = false;
   private externalFrames = false;
   private sentenceSigns: string[] = [];
+  /** The language the sentence on screen is in ('en', or the language it was translated into). */
+  private sentenceLanguage = 'en';
   private signLog: string[] = [];
   private offChannel: (() => void) | null = null;
   private offDelivery: (() => void) | null = null;
@@ -237,7 +241,12 @@ export class AudionSession {
     if (on && this.state.on) {
       if (!this.offContext) {
         const offChange = ctx.onChange((u) =>
-          this.dispatch({ type: 'CONTEXT', state: u.state, summary: u.summary }),
+          this.dispatch({
+            type: 'CONTEXT',
+            state: u.state,
+            summary: u.summary,
+            updating: u.updating,
+          }),
         );
         const offRefresh = ctx.onRefreshed?.((i) => this.trace({ kind: 'context', ...i }));
         this.offContext = () => {
@@ -251,7 +260,7 @@ export class AudionSession {
       this.offContext?.();
       this.offContext = null;
       if (this.state.context.state !== 'off')
-        this.dispatch({ type: 'CONTEXT', state: 'off', summary: null });
+        this.dispatch({ type: 'CONTEXT', state: 'off', summary: null, updating: false });
     }
   }
 
@@ -353,7 +362,7 @@ export class AudionSession {
             sign: res.sign as Sign | 'unknown',
           });
           if (was && res.sign !== 'unknown' && res.sign !== was) {
-            this.showNotice(`Ola changed “${was}” to “${res.sign}” after checking.`);
+            this.showNotice(`Changed “${was}” to “${res.sign}”.`);
           }
           return;
         }
@@ -485,7 +494,32 @@ export class AudionSession {
       writer: res.writer ?? 'the cloud model',
       ms: Math.round(this.deps.now() - composeStart),
     });
-    this.dispatch({ type: 'COMPOSED', sentence: res.sentence });
+    // Live translation: the sentence shown, captioned and spoken is the translation; if that fails the English one is
+    // kept and the signer is told in a few words.
+    let sentence = res.sentence;
+    this.sentenceLanguage = 'en';
+    const language = this.deps.settings().language ?? 'en';
+    if (language !== 'en') {
+      const translateStart = this.deps.now();
+      const t = (await this.deps.send({
+        type: 'api/translate',
+        text: sentence,
+        language,
+      })) as { ok: true; text: string } | { ok: false } | undefined;
+      if (run !== this.run) return;
+      if (t?.ok) {
+        sentence = t.text;
+        this.sentenceLanguage = language;
+        this.trace({
+          kind: 'translate',
+          language,
+          ms: Math.round(this.deps.now() - translateStart),
+        });
+      } else {
+        this.showNotice('Translation failed. Using English.');
+      }
+    }
+    this.dispatch({ type: 'COMPOSED', sentence });
     if (manual || this.deps.settings().speakMode === 'auto') await this.speak();
   }
 
@@ -505,6 +539,7 @@ export class AudionSession {
         text,
         voiceId: cfg.voiceId,
         speed: cfg.speed,
+        ...(this.sentenceLanguage !== 'en' ? { language: this.sentenceLanguage } : {}),
       })) as
         | { ok: true; audioBase64: string }
         | { ok: false; error?: { retryable?: boolean } }
@@ -550,9 +585,7 @@ export class AudionSession {
     const result = await this.deps.chat(text);
     if (run !== this.run || result === 'sent') return;
     this.showNotice(
-      result === 'draft'
-        ? 'Not posted to Meet chat: there is a draft in the chat box.'
-        : 'Couldn’t post to Meet chat.',
+      result === 'draft' ? 'Not posted: chat has a draft.' : 'Couldn’t post to chat.',
     );
   }
 

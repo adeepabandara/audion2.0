@@ -40,6 +40,8 @@ export interface ChipItem {
 export interface MeetingContextState {
   state: 'off' | 'waiting' | 'following';
   summary: string | null;
+  /** A summary refresh is in flight. */
+  updating: boolean;
 }
 
 export interface MachineState {
@@ -95,7 +97,7 @@ export const initialMachine = (): MachineState => ({
   delivered: null,
   notice: null,
   modelId: null,
-  context: { state: 'off', summary: null },
+  context: { state: 'off', summary: null, updating: false },
   chips: [],
   problems: [],
   cameraProblem: null,
@@ -132,7 +134,12 @@ export type MachineEvent =
   | { type: 'CALL_AUDIO'; connected: boolean }
   | { type: 'DELIVERY'; sent: boolean | null }
   | { type: 'NOTICE'; text: string | null }
-  | { type: 'CONTEXT'; state: MeetingContextState['state']; summary: string | null }
+  | {
+      type: 'CONTEXT';
+      state: MeetingContextState['state'];
+      summary: string | null;
+      updating?: boolean;
+    }
   | { type: 'MODEL_ID'; modelId: string }
   | { type: 'LIGHT'; dark: boolean }
   | { type: 'HANDS_EDGE'; out: boolean }
@@ -318,7 +325,10 @@ export function reduce(s: MachineState, e: MachineEvent): MachineState {
       return s.callAudio === callAudio ? s : { ...s, callAudio };
     }
     case 'CONTEXT':
-      return { ...s, context: { state: e.state, summary: e.summary } };
+      return {
+        ...s,
+        context: { state: e.state, summary: e.summary, updating: e.updating ?? false },
+      };
     case 'NOTICE':
       return { ...s, notice: e.text };
     case 'MODEL_ID':
@@ -392,7 +402,7 @@ const PROBLEM_VIEW: Array<[Problem, { status: Status; label: string; hint: strin
     {
       status: 'attention',
       label: 'Camera blocked',
-      hint: 'Allow camera access for Meet in Chrome, then try again.',
+      hint: 'Allow the camera in Chrome.',
     },
   ],
   [
@@ -400,7 +410,7 @@ const PROBLEM_VIEW: Array<[Problem, { status: Status; label: string; hint: strin
     {
       status: 'reconnecting',
       label: 'Reconnecting…',
-      hint: 'Your signs are saved and will be sent when the connection returns.',
+      hint: 'Signs saved. Sending soon.',
     },
   ],
   [
@@ -408,20 +418,20 @@ const PROBLEM_VIEW: Array<[Problem, { status: Status; label: string; hint: strin
     {
       status: 'attention',
       label: 'Voice not connected',
-      hint: 'Unmute your Meet microphone, or reload this Meet tab once, so Ola can speak in the call. You still hear it yourself.',
+      hint: 'Unmute Meet or reload the tab.',
     },
   ],
   [
     'notRecognised',
-    { status: 'attention', label: 'Couldn’t recognize that', hint: 'Try again slowly.' },
+    { status: 'attention', label: 'Couldn’t recognize that', hint: 'Sign again, slowly.' },
   ],
-  ['lowLight', { status: 'attention', label: 'Poor lighting', hint: 'Move to a brighter spot.' }],
+  ['lowLight', { status: 'attention', label: 'Poor lighting', hint: 'Needs more light.' }],
   [
     'handsOut',
     {
       status: 'attention',
       label: 'Hands out of frame',
-      hint: 'Keep your hands inside the outline.',
+      hint: 'Keep hands in the frame.',
     },
   ],
 ];

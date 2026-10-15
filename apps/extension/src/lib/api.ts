@@ -5,8 +5,10 @@ import {
   healthResponseSchema,
   recognizeResponseSchema,
   sessionResponseSchema,
+  translateResponseSchema,
   type ComposeRequest,
   type ContextRequest,
+  type TranslateRequest,
   type SpeakRequest,
 } from '@audion/shared';
 import type { Failure } from './messages';
@@ -101,7 +103,7 @@ export function createApiClient({
       }>
     > {
       try {
-        const res = await fetchImpl(`${baseUrl}/healthz`);
+        const res = await fetchImpl(`${baseUrl}/v1/health`);
         if (!res.ok) return await failure(res);
         return { ...healthResponseSchema.parse(await res.json()), ok: true };
       } catch (e) {
@@ -147,6 +149,12 @@ export function createApiClient({
       const res = await authed('/v1/context', (t) => json(t, req));
       if (isFailure(res)) return res;
       return { ok: true as const, ...contextResponseSchema.parse(await res.json()) };
+    },
+
+    async translate(req: TranslateRequest) {
+      const res = await authed('/v1/translate', (t) => json(t, req));
+      if (isFailure(res)) return res;
+      return { ok: true as const, ...translateResponseSchema.parse(await res.json()) };
     },
 
     async compose(req: ComposeRequest) {
