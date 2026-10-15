@@ -144,6 +144,15 @@ button.au-chip {
   color: var(--au-text);
   font-weight: 600;
 }
+.au-pill--icon {
+  width: 32px;
+  padding: 0;
+  gap: 0;
+  justify-content: center;
+}
+.au-pill--icon .au-pill__dot {
+  margin: 0;
+}
 .au-pill__dot {
   flex: none;
   width: 10px;

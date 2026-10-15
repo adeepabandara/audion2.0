@@ -21,6 +21,7 @@ export function createDefaultSession(
       fastSigns,
       cloudCheck,
       meetingContext,
+      language,
     } = getSettingsStore().useStore.getState().settings;
     return {
       holdTimeMs,
@@ -33,6 +34,7 @@ export function createDefaultSession(
       fastSigns,
       cloudCheck,
       meetingContext,
+      language,
     };
   };
   return new AudionSession({ ...deps, ...overrides });

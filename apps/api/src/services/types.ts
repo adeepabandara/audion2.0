@@ -3,6 +3,7 @@ import type {
   ContextRequest,
   RecognizeResponse,
   SpeakRequest,
+  TranslateRequest,
 } from '@audion/shared';
 
 export interface RecognizeInput {
@@ -29,6 +30,12 @@ export interface Summarizer {
   warmUp?(): Promise<void>;
 }
 
+export interface Translator {
+  /** The sentence in the target language. Nothing is stored or logged. */
+  translate(input: TranslateRequest): Promise<string>;
+  warmUp?(): Promise<void>;
+}
+
 export interface Speaker {
   speak(input: SpeakRequest): Promise<{ audio: Buffer; contentType: string }>;
   warmUp?(): Promise<void>;
@@ -41,5 +48,6 @@ export interface Services {
   recognizer: Recognizer;
   composer: Composer;
   summarizer: Summarizer;
+  translator: Translator;
   speaker: Speaker;
 }

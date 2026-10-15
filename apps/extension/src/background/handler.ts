@@ -35,6 +35,7 @@ export function createMessageHandler(
           text: req.text,
           voiceId: req.voiceId as never,
           speed: req.speed,
+          ...(req.language ? { language: req.language as never } : {}),
         });
         return r.ok
           ? { ok: true as const, audioBase64: toBase64(r.audio), contentType: r.contentType }
@@ -57,6 +58,8 @@ export function createMessageHandler(
           transcript: req.transcript,
           ...(req.previous ? { previous: req.previous } : {}),
         });
+      case 'api/translate':
+        return api.translate({ text: req.text, language: req.language as never });
       case 'api/feedback':
         return api.feedback({ rating: req.rating, signs: req.signs });
       case 'transcript/add': {

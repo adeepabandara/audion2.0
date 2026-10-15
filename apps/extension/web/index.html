@@ -253,7 +253,7 @@
       }
       .browser {
         /* Fits the first screen below the header; the Maximise button gives the full view. */
-        height: clamp(560px, calc(100vh - 48px), 900px);
+        height: clamp(560px, calc(100vh - 150px), 900px);
         min-height: 560px;
         display: flex;
         flex-direction: column;
@@ -545,6 +545,555 @@
         outline: 3px solid #fff;
         outline-offset: 1px;
       }
+      .behind {
+        max-width: 1180px;
+        margin: 14px auto 0;
+        padding: 0;
+      }
+      button.behind-btn {
+        display: inline-flex;
+        align-items: center;
+        gap: 10px;
+        padding: 12px 20px;
+        border: 0;
+        border-radius: 12px;
+        background: var(--primary);
+        color: var(--on-primary);
+        font:
+          600 1rem Poppins,
+          sans-serif;
+        cursor: pointer;
+      }
+      button.behind-btn svg {
+        fill: none;
+        stroke: currentColor;
+        stroke-width: 1.8;
+        stroke-linecap: round;
+      }
+      button.behind-btn:focus-visible {
+        outline: 3px solid var(--fg);
+        outline-offset: 3px;
+      }
+
+      /* ---- "Behind the scenes": the live architecture view (always dark, like a control room). ---- */
+      .arch {
+        --arch-bg: #070a10;
+        --arch-surface: #101520;
+        --arch-line: #232b3b;
+        --arch-text: #f3f6fb;
+        --arch-muted: #9aa5b8;
+        --arch-accent: #2dd4bf;
+        --arch-video: #fbbf24;
+        --arch-points: #2dd4bf;
+        --arch-signs: #60a5fa;
+        --arch-text-kind: #c4a1ff;
+        --arch-audio: #f472b6;
+        --arch-context: #a3e635;
+        position: fixed;
+        inset: 0;
+        z-index: 1100;
+        display: flex;
+        flex-direction: column;
+        background: radial-gradient(
+            900px 500px at 15% -10%,
+            rgba(45, 212, 191, 0.12),
+            transparent 60%
+          ),
+          radial-gradient(800px 480px at 95% 105%, rgba(96, 165, 250, 0.12), transparent 60%),
+          var(--arch-bg);
+        color: var(--arch-text);
+        font:
+          400 0.95rem/1.5 Poppins,
+          system-ui,
+          sans-serif;
+      }
+      .arch__head {
+        flex: none;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        gap: 16px;
+        padding: 14px 24px;
+        border-bottom: 1px solid var(--arch-line);
+        background: rgba(7, 10, 16, 0.6);
+        backdrop-filter: blur(8px);
+      }
+      .arch__head h2 {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        margin: 0 0 2px;
+        font-size: 1.3rem;
+        letter-spacing: 0.01em;
+      }
+      .arch__head p {
+        margin: 0;
+        color: var(--arch-muted);
+        font-size: 0.86rem;
+      }
+      .arch__live-pill {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        padding: 2px 10px 2px 8px;
+        border: 1px solid rgba(45, 212, 191, 0.5);
+        border-radius: 999px;
+        color: var(--arch-accent);
+        font-size: 0.72rem;
+        font-weight: 700;
+        letter-spacing: 0.12em;
+        text-transform: uppercase;
+      }
+      .arch__live-dot {
+        width: 8px;
+        height: 8px;
+        border-radius: 50%;
+        background: var(--arch-accent);
+        box-shadow: 0 0 10px var(--arch-accent);
+        animation: arch-pulse 1.8s ease-in-out infinite;
+      }
+      @keyframes arch-pulse {
+        50% {
+          opacity: 0.35;
+          transform: scale(0.8);
+        }
+      }
+      .arch__actions {
+        display: flex;
+        gap: 8px;
+        flex: none;
+      }
+      .arch__btn {
+        padding: 8px 16px;
+        border: 1px solid rgba(45, 212, 191, 0.6);
+        border-radius: 999px;
+        background: rgba(45, 212, 191, 0.08);
+        color: var(--arch-text);
+        font:
+          600 0.88rem Poppins,
+          sans-serif;
+        cursor: pointer;
+        transition:
+          background 0.2s,
+          box-shadow 0.2s;
+      }
+      .arch__btn:hover:not(:disabled) {
+        background: rgba(45, 212, 191, 0.18);
+        box-shadow: 0 0 18px rgba(45, 212, 191, 0.3);
+      }
+      .arch__btn:disabled {
+        opacity: 0.6;
+        cursor: default;
+      }
+      .arch__btn--close {
+        border-color: var(--arch-line);
+        background: transparent;
+      }
+      .arch__btn:focus-visible,
+      .arch-node:focus-visible {
+        outline: 3px solid #fff;
+        outline-offset: 2px;
+      }
+      .arch__body {
+        flex: 1;
+        min-height: 0;
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) 340px;
+        gap: 16px;
+        padding: 14px 24px 18px;
+      }
+      @media (max-width: 960px) {
+        .arch__body {
+          grid-template-columns: 1fr;
+          overflow-y: auto;
+        }
+        .arch__svg {
+          flex: none;
+          height: auto;
+          aspect-ratio: 1440 / 780;
+        }
+        .arch__side {
+          overflow: visible;
+        }
+      }
+      .arch__diagram {
+        min-height: 0;
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+        padding: 10px;
+        border: 1px solid var(--arch-line);
+        border-radius: 20px;
+        background:
+          linear-gradient(rgba(255, 255, 255, 0.035) 1px, transparent 1px) 0 0 / 36px 36px,
+          linear-gradient(90deg, rgba(255, 255, 255, 0.035) 1px, transparent 1px) 0 0 / 36px 36px,
+          rgba(8, 11, 17, 0.7);
+      }
+      .arch__svg {
+        flex: 1;
+        min-height: 0;
+        width: 100%;
+      }
+      .arch-zone {
+        stroke-width: 1.5;
+      }
+      .arch-zone--device {
+        fill: rgba(45, 212, 191, 0.035);
+        stroke: rgba(45, 212, 191, 0.3);
+      }
+      .arch-zone--cloud {
+        fill: rgba(96, 165, 250, 0.05);
+        stroke: rgba(96, 165, 250, 0.35);
+      }
+      .arch-zone__label {
+        fill: var(--arch-text);
+        font:
+          700 13px Poppins,
+          sans-serif;
+        letter-spacing: 0.22em;
+      }
+      .arch-zone__sub {
+        fill: var(--arch-muted);
+        font:
+          12px Poppins,
+          sans-serif;
+      }
+      .arch-edge__line {
+        fill: none;
+        stroke-width: 1.6;
+        opacity: 0.4;
+        transition:
+          opacity 0.3s,
+          stroke-width 0.3s;
+      }
+      .arch-edge--on .arch-edge__line {
+        opacity: 1;
+        stroke-width: 2.4;
+        filter: drop-shadow(0 0 4px currentColor);
+      }
+      .arch-edge--optional .arch-edge__line {
+        stroke-dasharray: 3 7;
+        stroke-linecap: round;
+      }
+      .arch-edge__flow {
+        fill: none;
+        stroke-width: 2;
+        stroke-linecap: round;
+        stroke-dasharray: 2 18;
+        opacity: 0.8;
+        animation: arch-flow 1.6s linear infinite;
+      }
+      .arch-edge--optional .arch-edge__flow {
+        opacity: 0.35;
+      }
+      @keyframes arch-flow {
+        to {
+          stroke-dashoffset: -20;
+        }
+      }
+      .arch-edge__label {
+        fill: #b9c2d3;
+        font:
+          500 11.5px Poppins,
+          sans-serif;
+        letter-spacing: 0.03em;
+        paint-order: stroke;
+        stroke: #070a10;
+        stroke-width: 5px;
+        stroke-linejoin: round;
+      }
+      .arch-edge--video {
+        color: var(--arch-video);
+      }
+      .arch-edge--points {
+        color: var(--arch-points);
+      }
+      .arch-edge--signs {
+        color: var(--arch-signs);
+      }
+      .arch-edge--text {
+        color: var(--arch-text-kind);
+      }
+      .arch-edge--audio {
+        color: var(--arch-audio);
+      }
+      .arch-edge--context {
+        color: var(--arch-context);
+      }
+      .arch-edge path {
+        stroke: currentColor;
+      }
+      .arch-fill--video {
+        fill: var(--arch-video);
+        background: var(--arch-video);
+      }
+      .arch-fill--points {
+        fill: var(--arch-points);
+        background: var(--arch-points);
+      }
+      .arch-fill--signs {
+        fill: var(--arch-signs);
+        background: var(--arch-signs);
+      }
+      .arch-fill--text {
+        fill: var(--arch-text-kind);
+        background: var(--arch-text-kind);
+      }
+      .arch-fill--audio {
+        fill: var(--arch-audio);
+        background: var(--arch-audio);
+      }
+      .arch-fill--context {
+        fill: var(--arch-context);
+        background: var(--arch-context);
+      }
+      .arch-packet {
+        filter: drop-shadow(0 0 7px currentColor) drop-shadow(0 0 14px currentColor);
+      }
+      .arch-packet--video {
+        fill: var(--arch-video);
+        color: var(--arch-video);
+      }
+      .arch-packet--points {
+        fill: var(--arch-points);
+        color: var(--arch-points);
+      }
+      .arch-packet--signs {
+        fill: var(--arch-signs);
+        color: var(--arch-signs);
+      }
+      .arch-packet--text {
+        fill: var(--arch-text-kind);
+        color: var(--arch-text-kind);
+      }
+      .arch-packet--audio {
+        fill: var(--arch-audio);
+        color: var(--arch-audio);
+      }
+      .arch-packet--context {
+        fill: var(--arch-context);
+        color: var(--arch-context);
+      }
+      .arch-node {
+        cursor: pointer;
+      }
+      .arch-node__box {
+        fill: rgba(16, 21, 32, 0.92);
+        stroke: rgba(45, 212, 191, 0.28);
+        stroke-width: 1.4;
+        transition:
+          stroke 0.3s,
+          filter 0.3s;
+      }
+      .arch-node--cloud .arch-node__box {
+        stroke: rgba(96, 165, 250, 0.4);
+      }
+      .arch-node:hover .arch-node__box {
+        stroke: rgba(255, 255, 255, 0.6);
+      }
+      .arch-node--lit .arch-node__box {
+        stroke: var(--arch-accent);
+        stroke-width: 2.2;
+        filter: drop-shadow(0 0 12px rgba(45, 212, 191, 0.6));
+      }
+      .arch-node--cloud.arch-node--lit .arch-node__box {
+        stroke: #8ab4f8;
+        filter: drop-shadow(0 0 12px rgba(138, 180, 248, 0.6));
+      }
+      .arch-node--selected .arch-node__box {
+        stroke: #fff;
+        stroke-width: 2.2;
+      }
+      .arch-node__disc {
+        fill: rgba(45, 212, 191, 0.1);
+        stroke: rgba(45, 212, 191, 0.35);
+        stroke-width: 1;
+      }
+      .arch-node--cloud .arch-node__disc {
+        fill: rgba(96, 165, 250, 0.12);
+        stroke: rgba(96, 165, 250, 0.45);
+      }
+      .arch-node__icon {
+        stroke: var(--arch-accent);
+        stroke-width: 1.7;
+        stroke-linecap: round;
+        stroke-linejoin: round;
+      }
+      .arch-node--cloud .arch-node__icon {
+        stroke: #8ab4f8;
+      }
+      .arch-node__title {
+        fill: var(--arch-text);
+        font:
+          600 14px Poppins,
+          sans-serif;
+      }
+      .arch-node__sub {
+        fill: var(--arch-muted);
+        font:
+          11px Poppins,
+          sans-serif;
+      }
+      .arch-node__rule {
+        stroke: var(--arch-line);
+        stroke-width: 1;
+      }
+      .arch-node__dot {
+        fill: #4b5568;
+        transition: fill 0.3s;
+      }
+      .arch-node--lit .arch-node__dot {
+        fill: var(--arch-accent);
+        filter: drop-shadow(0 0 5px var(--arch-accent));
+      }
+      .arch-node__badge {
+        fill: #cfd6e4;
+        font:
+          500 11px Poppins,
+          sans-serif;
+      }
+      .arch__legend {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 6px 18px;
+        margin: 0;
+        padding: 0 6px 2px;
+        list-style: none;
+        color: var(--arch-muted);
+        font-size: 0.8rem;
+      }
+      .arch__legend li {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+      }
+      .arch__swatch {
+        width: 10px;
+        height: 10px;
+        border-radius: 50%;
+        box-shadow: 0 0 8px currentColor;
+      }
+      .arch__swatch--dashed {
+        width: 26px;
+        height: 0;
+        border-radius: 0;
+        border-top: 2px dotted var(--arch-muted);
+        box-shadow: none;
+      }
+      .arch__side {
+        min-height: 0;
+        display: flex;
+        flex-direction: column;
+        gap: 12px;
+        overflow-y: auto;
+      }
+      .arch__card {
+        padding: 12px 14px;
+        border: 1px solid var(--arch-line);
+        border-radius: 16px;
+        background: rgba(16, 21, 32, 0.8);
+      }
+      .arch__card h3 {
+        display: flex;
+        justify-content: space-between;
+        align-items: baseline;
+        gap: 8px;
+        margin: 0 0 6px;
+        font-size: 0.98rem;
+      }
+      .arch__card p {
+        margin: 0 0 6px;
+        font-size: 0.85rem;
+      }
+      .arch__where {
+        font-size: 0.7rem;
+        font-weight: 600;
+        padding: 1px 8px;
+        border-radius: 999px;
+        border: 1px solid currentColor;
+      }
+      .arch__where--device {
+        color: #2dd4bf;
+      }
+      .arch__where--cloud {
+        color: #8ab4f8;
+      }
+      .arch__data {
+        color: var(--arch-muted);
+      }
+      .arch__live {
+        color: #2dd4bf;
+        font-weight: 600;
+      }
+      .arch__hint {
+        color: var(--arch-muted);
+      }
+      .arch__service {
+        color: var(--arch-muted);
+        font-size: 0.78rem;
+      }
+      .arch__stats {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 6px 12px;
+        margin: 0;
+      }
+      .arch__stats div {
+        display: grid;
+      }
+      .arch__stats dt {
+        color: var(--arch-muted);
+        font-size: 0.72rem;
+      }
+      .arch__stats dd {
+        margin: 0;
+        font-weight: 700;
+        font-variant-numeric: tabular-nums;
+      }
+      .arch__card--feed {
+        flex: 1;
+        min-height: 120px;
+      }
+      .arch__feed {
+        margin: 0;
+        padding: 0;
+        list-style: none;
+        font-size: 0.78rem;
+        display: grid;
+        gap: 4px;
+      }
+      .arch__feed time {
+        color: var(--arch-muted);
+        margin-right: 4px;
+      }
+      .arch__credit {
+        margin: 0;
+        color: var(--arch-muted);
+        font-size: 0.72rem;
+      }
+      .arch__feed--sample {
+        font-style: italic;
+        color: var(--arch-muted);
+      }
+      @media (prefers-reduced-motion: reduce) {
+        .arch-node__box,
+        .arch-edge__line {
+          transition: none;
+        }
+        .arch-edge__flow,
+        .arch__live-dot {
+          animation: none;
+        }
+        .arch-edge__flow {
+          display: none;
+        }
+      }
+      body.arch-open {
+        overflow: hidden;
+      }
+      .arch-open .arch {
+        overflow: hidden;
+      }
       .sim-note {
         margin: 8px 0 0;
         font-size: 0.85rem;
@@ -701,6 +1250,17 @@
           </div>
         </div>
       </div>
+      <p class="behind">
+        <button type="button" class="behind-btn" id="open-architecture">
+          <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true">
+            <circle cx="5" cy="6" r="2.2" />
+            <circle cx="19" cy="6" r="2.2" />
+            <circle cx="12" cy="18" r="2.2" />
+            <path d="M7 6.6c3 .8 7 .8 10 0M6 8l5 8M18 8l-5 8" />
+          </svg>
+          See what’s really happening behind the scenes
+        </button>
+      </p>
       <p class="sim-note">
         <button type="button" class="pause" id="pause-videos" aria-pressed="false">
           Pause call videos
@@ -710,467 +1270,7 @@
       </p>
     </section>
 
-    <main>
-      <h2>How to try it</h2>
-      <ol>
-        <li>
-          Open Ola from the small pill at the bottom right of the call (or the Ola icon in the
-          browser bar), switch it on, and allow the camera. Video stays in your browser's memory and
-          is never stored.
-        </li>
-        <li>
-          Make one American Sign Language sign, then lower your hands. Ola sends a short clip for
-          recognition.
-        </li>
-        <li>Read the caption and listen to the voice. Turn your sound on.</li>
-      </ol>
-      <p class="card">
-        Recognition can take a few seconds per sign. If you do not sign, you can still look at how
-        it works below.
-      </p>
-
-      <h2 id="try-heading">Four sentences to try</h2>
-      <p>
-        Make the signs in order, lowering your hands after each one. After the last sign, wait a
-        moment and Ola builds and speaks the sentence. The wording may vary a little.
-      </p>
-      <ol class="try" aria-labelledby="try-heading">
-        <li>
-          <p class="says">Hello, please wait.</p>
-          <ul class="chips" aria-label="Signs in order">
-            <li>
-              <a
-                href="https://www.signingsavvy.com/search/hello"
-                target="_blank"
-                rel="noopener noreferrer"
-                aria-label="hello: see the sign (opens in a new tab)"
-                >HELLO</a
-              >
-            </li>
-            <span class="arrow" aria-hidden="true">→</span>
-            <li>
-              <a
-                href="https://www.signingsavvy.com/search/please"
-                target="_blank"
-                rel="noopener noreferrer"
-                aria-label="please: see the sign (opens in a new tab)"
-                >PLEASE</a
-              >
-            </li>
-            <span class="arrow" aria-hidden="true">→</span>
-            <li>
-              <a
-                href="https://www.signingsavvy.com/search/wait"
-                target="_blank"
-                rel="noopener noreferrer"
-                aria-label="wait: see the sign (opens in a new tab)"
-                >WAIT</a
-              >
-            </li>
-          </ul>
-        </li>
-        <li>
-          <p class="says">Where is the time?</p>
-          <ul class="chips" aria-label="Signs in order">
-            <li>
-              <a
-                href="https://www.signingsavvy.com/search/where"
-                target="_blank"
-                rel="noopener noreferrer"
-                aria-label="where: see the sign (opens in a new tab)"
-                >WHERE</a
-              >
-            </li>
-            <span class="arrow" aria-hidden="true">→</span>
-            <li>
-              <a
-                href="https://www.signingsavvy.com/search/time"
-                target="_blank"
-                rel="noopener noreferrer"
-                aria-label="time: see the sign (opens in a new tab)"
-                >TIME</a
-              >
-            </li>
-          </ul>
-        </li>
-        <li>
-          <p class="says">Thank you, I'm fine. Bye.</p>
-          <ul class="chips" aria-label="Signs in order">
-            <li>
-              <a
-                href="https://www.signingsavvy.com/search/thank%20you"
-                target="_blank"
-                rel="noopener noreferrer"
-                aria-label="thank you: see the sign (opens in a new tab)"
-                >THANKYOU</a
-              >
-            </li>
-            <span class="arrow" aria-hidden="true">→</span>
-            <li>
-              <a
-                href="https://www.signingsavvy.com/search/fine"
-                target="_blank"
-                rel="noopener noreferrer"
-                aria-label="fine: see the sign (opens in a new tab)"
-                >FINE</a
-              >
-            </li>
-            <span class="arrow" aria-hidden="true">→</span>
-            <li>
-              <a
-                href="https://www.signingsavvy.com/search/bye"
-                target="_blank"
-                rel="noopener noreferrer"
-                aria-label="bye: see the sign (opens in a new tab)"
-                >BYE</a
-              >
-            </li>
-          </ul>
-        </li>
-        <li>
-          <p class="says">Not now, later, tomorrow.</p>
-          <ul class="chips" aria-label="Signs in order">
-            <li>
-              <a
-                href="https://www.signingsavvy.com/search/not"
-                target="_blank"
-                rel="noopener noreferrer"
-                aria-label="not: see the sign (opens in a new tab)"
-                >NOT</a
-              >
-            </li>
-            <span class="arrow" aria-hidden="true">→</span>
-            <li>
-              <a
-                href="https://www.signingsavvy.com/search/now"
-                target="_blank"
-                rel="noopener noreferrer"
-                aria-label="now: see the sign (opens in a new tab)"
-                >NOW</a
-              >
-            </li>
-            <span class="arrow" aria-hidden="true">→</span>
-            <li>
-              <a
-                href="https://www.signingsavvy.com/search/later"
-                target="_blank"
-                rel="noopener noreferrer"
-                aria-label="later: see the sign (opens in a new tab)"
-                >LATER</a
-              >
-            </li>
-            <span class="arrow" aria-hidden="true">→</span>
-            <li>
-              <a
-                href="https://www.signingsavvy.com/search/tomorrow"
-                target="_blank"
-                rel="noopener noreferrer"
-                aria-label="tomorrow: see the sign (opens in a new tab)"
-                >TOMORROW</a
-              >
-            </li>
-          </ul>
-        </li>
-      </ol>
-      <h2 id="signs-heading">See each sign</h2>
-      <p>
-        Not sure how a sign looks? Choose a word to see it on SigningSavvy, a public ASL dictionary.
-        It opens in a new tab. Dictionaries show more than one way to sign some words, so pick the
-        plain, common one.
-      </p>
-      <ul class="chips all" aria-labelledby="signs-heading">
-        <li>
-          <a
-            href="https://www.signingsavvy.com/search/hello"
-            target="_blank"
-            rel="noopener noreferrer"
-            aria-label="hello: see the sign (opens in a new tab)"
-            >HELLO</a
-          >
-        </li>
-        <li>
-          <a
-            href="https://www.signingsavvy.com/search/bye"
-            target="_blank"
-            rel="noopener noreferrer"
-            aria-label="bye: see the sign (opens in a new tab)"
-            >BYE</a
-          >
-        </li>
-        <li>
-          <a
-            href="https://www.signingsavvy.com/search/yes"
-            target="_blank"
-            rel="noopener noreferrer"
-            aria-label="yes: see the sign (opens in a new tab)"
-            >YES</a
-          >
-        </li>
-        <li>
-          <a
-            href="https://www.signingsavvy.com/search/no"
-            target="_blank"
-            rel="noopener noreferrer"
-            aria-label="no: see the sign (opens in a new tab)"
-            >NO</a
-          >
-        </li>
-        <li>
-          <a
-            href="https://www.signingsavvy.com/search/please"
-            target="_blank"
-            rel="noopener noreferrer"
-            aria-label="please: see the sign (opens in a new tab)"
-            >PLEASE</a
-          >
-        </li>
-        <li>
-          <a
-            href="https://www.signingsavvy.com/search/thank%20you"
-            target="_blank"
-            rel="noopener noreferrer"
-            aria-label="thank you: see the sign (opens in a new tab)"
-            >THANKYOU</a
-          >
-        </li>
-        <li>
-          <a
-            href="https://www.signingsavvy.com/search/wait"
-            target="_blank"
-            rel="noopener noreferrer"
-            aria-label="wait: see the sign (opens in a new tab)"
-            >WAIT</a
-          >
-        </li>
-        <li>
-          <a
-            href="https://www.signingsavvy.com/search/why"
-            target="_blank"
-            rel="noopener noreferrer"
-            aria-label="why: see the sign (opens in a new tab)"
-            >WHY</a
-          >
-        </li>
-        <li>
-          <a
-            href="https://www.signingsavvy.com/search/who"
-            target="_blank"
-            rel="noopener noreferrer"
-            aria-label="who: see the sign (opens in a new tab)"
-            >WHO</a
-          >
-        </li>
-        <li>
-          <a
-            href="https://www.signingsavvy.com/search/where"
-            target="_blank"
-            rel="noopener noreferrer"
-            aria-label="where: see the sign (opens in a new tab)"
-            >WHERE</a
-          >
-        </li>
-        <li>
-          <a
-            href="https://www.signingsavvy.com/search/now"
-            target="_blank"
-            rel="noopener noreferrer"
-            aria-label="now: see the sign (opens in a new tab)"
-            >NOW</a
-          >
-        </li>
-        <li>
-          <a
-            href="https://www.signingsavvy.com/search/later"
-            target="_blank"
-            rel="noopener noreferrer"
-            aria-label="later: see the sign (opens in a new tab)"
-            >LATER</a
-          >
-        </li>
-        <li>
-          <a
-            href="https://www.signingsavvy.com/search/tomorrow"
-            target="_blank"
-            rel="noopener noreferrer"
-            aria-label="tomorrow: see the sign (opens in a new tab)"
-            >TOMORROW</a
-          >
-        </li>
-        <li>
-          <a
-            href="https://www.signingsavvy.com/search/time"
-            target="_blank"
-            rel="noopener noreferrer"
-            aria-label="time: see the sign (opens in a new tab)"
-            >TIME</a
-          >
-        </li>
-        <li>
-          <a
-            href="https://www.signingsavvy.com/search/finish"
-            target="_blank"
-            rel="noopener noreferrer"
-            aria-label="finish: see the sign (opens in a new tab)"
-            >FINISH</a
-          >
-        </li>
-        <li>
-          <a
-            href="https://www.signingsavvy.com/search/think"
-            target="_blank"
-            rel="noopener noreferrer"
-            aria-label="think: see the sign (opens in a new tab)"
-            >THINK</a
-          >
-        </li>
-        <li>
-          <a
-            href="https://www.signingsavvy.com/search/look"
-            target="_blank"
-            rel="noopener noreferrer"
-            aria-label="look: see the sign (opens in a new tab)"
-            >LOOK</a
-          >
-        </li>
-        <li>
-          <a
-            href="https://www.signingsavvy.com/search/listen"
-            target="_blank"
-            rel="noopener noreferrer"
-            aria-label="listen: see the sign (opens in a new tab)"
-            >LISTEN</a
-          >
-        </li>
-        <li>
-          <a
-            href="https://www.signingsavvy.com/search/talk"
-            target="_blank"
-            rel="noopener noreferrer"
-            aria-label="talk: see the sign (opens in a new tab)"
-            >TALK</a
-          >
-        </li>
-        <li>
-          <a
-            href="https://www.signingsavvy.com/search/fine"
-            target="_blank"
-            rel="noopener noreferrer"
-            aria-label="fine: see the sign (opens in a new tab)"
-            >FINE</a
-          >
-        </li>
-        <li>
-          <a
-            href="https://www.signingsavvy.com/search/same"
-            target="_blank"
-            rel="noopener noreferrer"
-            aria-label="same: see the sign (opens in a new tab)"
-            >SAME</a
-          >
-        </li>
-        <li>
-          <a
-            href="https://www.signingsavvy.com/search/not"
-            target="_blank"
-            rel="noopener noreferrer"
-            aria-label="not: see the sign (opens in a new tab)"
-            >NOT</a
-          >
-        </li>
-      </ul>
-
-      <h2 id="context-heading">Meeting context</h2>
-      <p>
-        The call above has live captions from a short made-up meeting. Every so often Gemini
-        summarises them, and that summary helps Gemma and Gemini word your sentences for what the
-        meeting is about. Try signing WHERE then TIME and compare the sentence with the context
-        switched off. In a real Meet call the same thing reads Meet's own captions (turn them on
-        with the CC button). Captions are never stored.
-      </p>
-      <p
-        class="card"
-        id="context-box"
-        role="status"
-        aria-live="polite"
-        aria-labelledby="context-heading"
-      >
-        Not following the meeting yet.
-      </p>
-
-      <h2 id="trace-heading">Live pipeline</h2>
-      <p>
-        See which model did each step, and how long it took. Hands are found on your device by
-        MediaPipe. Then the sign is named on your device by the sign model, with no cloud call.
-        Gemma (or Gemini as the backup) writes the sentence, and Google Text-to-Speech speaks it.
-      </p>
-      <ol id="trace" class="trace" aria-labelledby="trace-heading" aria-live="polite" reversed></ol>
-
-      <h2 id="test-heading">No camera? Test with a video</h2>
-      <p>
-        Pick a video of someone signing. It plays in place of the camera, and nothing is uploaded:
-        it stays in your browser. Then turn Ola on. Ola recognises one sign at a time, so the video
-        needs a short rest between signs, and only the 22 signs below can be named.
-      </p>
-      <p class="card">
-        <label>Video file <input type="file" id="test-video" accept="video/*" /></label><br />
-        <label
-          >Playback speed
-          <select id="test-speed">
-            <option value="1">Normal</option>
-            <option value="0.75">Slower (0.75×)</option>
-            <option value="0.5">Slow (0.5×)</option>
-          </select></label
-        ><br />
-        <span class="status" id="test-status" role="status" aria-live="polite"></span>
-      </p>
-
-      <h2 id="voices-heading">Hear the voices</h2>
-      <p>
-        Ola speaks with Google Cloud Text-to-Speech. Choose a voice in Ola's settings (the gear in
-        the panel). Press a button to hear it.
-      </p>
-      <div id="voice-buttons" class="voices" role="group" aria-labelledby="voices-heading"></div>
-      <p class="status" id="voice-status" role="status" aria-live="polite"></p>
-
-      <h2 id="gemma-heading">Sentences written on this device</h2>
-      <p>
-        Gemma 4 is Google's open model. When you turn Ola on, your browser starts getting it (about
-        2 GB, once, then kept in your browser) and, if it supports WebGPU, Gemma writes your
-        sentences right here with no server call for that step. Until it is ready, and if it cannot
-        run, Gemini writes them. Untick the box to stop it.
-      </p>
-      <p class="card">
-        <label
-          ><input type="checkbox" id="gemma-toggle" /> Use Gemma 4 on this device (about 2 GB,
-          downloaded once)</label
-        ><br />
-        <span class="status" id="gemma-status" role="status" aria-live="polite"></span><br />
-        <span class="status" id="sentence-writer" role="status" aria-live="polite"></span>
-      </p>
-
-      <h2>How it works</h2>
-      <ul>
-        <li>Hand tracking runs on your device (MediaPipe).</li>
-        <li>
-          A small sign model, trained on isolated ASL signs, names each sign on your device in
-          milliseconds. No video is sent anywhere for this step.
-        </li>
-        <li>
-          Gemma, Google's open model, writes the sentence from several signs, on your device. Gemini
-          on Google Cloud writes it until Gemma has loaded, or if your browser cannot run it. Google
-          Cloud Text-to-Speech speaks it.
-        </li>
-        <li>Ola also works as a Chrome extension that speaks into Google Meet calls.</li>
-      </ul>
-
-      <footer>
-        <p class="status" id="service-status" role="status" aria-live="polite">
-          Checking the service…
-        </p>
-        Sign data comes from the PopSign project (CC BY). Hand tracking by MediaPipe. Runs on Google
-        Cloud Run.
-      </footer>
-    </main>
+    <div id="architecture-root"></div>
     <script type="module" src="../src/web/main.tsx"></script>
   </body>
 </html>

@@ -164,25 +164,75 @@ choose `CONFIDENCE_THRESHOLD`, then update that variable the same way.
 
 The same image also serves the public web demo (`apps/extension/web/`, built with `pnpm --filter @audion/extension
 build:web`, copied into the image as `/app/web`, `WEB_DIR` already set in the Dockerfile). One Cloud Run service is the
-whole site: page, hand tracker and API on one origin, so no CORS or extension ID is involved. Build the image from the
-repo root as in section 2, then deploy as in section 3 with these differences (your calls, not done from code):
+whole site: page, hand tracker and API on one origin, so no CORS or extension ID is involved. Signs are recognised on
+the visitor's device (no recognition call, no tuned endpoint), so the service only needs Gemini for sentences,
+meeting summaries and translation, and Cloud Text-to-Speech for voices. All of this is yours to run: the commands
+create cloud resources and change IAM.
 
-- `ALLOWED_ORIGINS` may stay empty for the demo; the site's own origin is accepted when `WEB_DIR` is set (live mode no longer refuses to start without it in that case). Add
-  `chrome-extension://EXTENSION_ID` if the extension uses the same service.
-- Use the **tuned** recognizer env vars from section 6 (`RECOGNIZER_MODE: tuned`, `TUNED_ENDPOINT_ID`, `TUNED_LOCATION: us`).
-- Keep the service warm and capped for the evaluation: `--min-instances 1 --max-instances 3`, a budget alert, and
-  `DAILY_CALL_CAP` sized to the expected judging traffic (it is per instance, in memory).
-- The judges must be able to open it without signing in: `--allow-unauthenticated` (check your organisation policy).
-- The image also carries the Gemma runtime's WebAssembly files (~112 MB in `/app/web/litert`). The 2 GB Gemma model itself is not in the image: visitors who turn the switch on fetch it from Hugging Face.
-- The meeting-context feature adds `POST /v1/context` (a Gemini text call using the compose model and location, about one call a minute per signer who turned it on). Its limit is `RATE_LIMIT_CONTEXT_PER_INSTALL_PER_MIN` (default 6). The caption text is never logged.
-- Do not redeploy or delete the tuned endpoint during evaluation. Check the site with:
+**1. One-time setup** (skip what section 1 already did): enable the APIs, create the `audion-api` service account with
+`roles/aiplatform.user`, create the `audion-jwt-secret` secret and the `audion` Artifact Registry repository, exactly
+as in section 1 (project `audion-511503`, region `us-central1`).
+
+**2. Build** the image with Cloud Build (no local Docker needed; run from the repo root, it uploads this folder minus
+`.dockerignore`):
+
+```bash
+IMAGE=us-central1-docker.pkg.dev/audion-511503/audion/ola-demo:$(git rev-parse --short HEAD)
+gcloud builds submit --config apps/api/cloudbuild.yaml --substitutions _IMAGE=$IMAGE .
+```
+
+**3. Settings** in `env-demo.yaml` (no secrets in it; `ALLOWED_ORIGINS` stays empty because the site's own origin is
+accepted when `WEB_DIR` is set):
+
+```yaml
+MOCK: '0'
+GCP_PROJECT_ID: audion-511503
+# Not used for the demo's own signs (they are named on the device); only the optional cloud double-check would call it.
+RECOGNIZER_MODE: base
+BASE_MODEL: gemini-3.5-flash
+BASE_LOCATION: global
+COMPOSE_MODEL: gemini-3.5-flash
+COMPOSE_LOCATION: global
+COMPOSE_THINKING_LEVEL: minimal
+TRUST_PROXY_HOPS: '1'
+# Sized to the expected judging traffic; counted per instance, in memory.
+DAILY_CALL_CAP: '500'
+```
+
+**4. Deploy**, kept warm and capped for the evaluation:
+
+```bash
+SA=audion-api@audion-511503.iam.gserviceaccount.com
+gcloud run deploy ola-demo \
+  --image $IMAGE --region us-central1 \
+  --service-account $SA \
+  --env-vars-file env-demo.yaml \
+  --set-secrets JWT_SECRET=audion-jwt-secret:latest \
+  --allow-unauthenticated \
+  --min-instances 1 --max-instances 3 --concurrency 40 --memory 512Mi --cpu 1 --timeout 60
+```
+
+- The judges must open it without signing in: `--allow-unauthenticated` (an IAM change; check your organisation
+  policy, which may forbid public services).
+- `--min-instances 1` keeps the first visit fast and lets the 22 fixed phrases stay cached in memory; set a budget
+  alert as well.
+- The image carries the Gemma runtime's WebAssembly files (~112 MB in `/app/web/litert`). The 2 GB Gemma model itself
+  is not in the image: visitors' browsers fetch it from Hugging Face the first time Ola is turned on.
+- Calls the demo makes: `/v1/compose` (two or more signs, only when Gemma is not ready), `/v1/context` (about one a
+  minute while the scripted meeting runs, limit `RATE_LIMIT_CONTEXT_PER_INSTALL_PER_MIN`), `/v1/translate` (one per
+  sentence when a language is picked, limit `RATE_LIMIT_TRANSLATE_PER_INSTALL_PER_MIN`) and `/v1/speak`. No text is
+  logged.
+- Health is `GET /v1/health` (same answer as `/healthz`). Cloud Run's front end reserves `/healthz` on `*.run.app` and answers 404 itself, so clients and the smoke script use `/v1/health`.
+- **Custom domain (`ola.audion.live`).** (1) Verify `audion.live` for your Google account: `gcloud domains verify audion.live` (opens Search Console; add the TXT record it shows at your DNS host, then Verify). (2) Create the mapping (`gcloud beta run domain-mappings create --service ola-demo --domain ola.audion.live --region us-central1`, or the same call through the Cloud Run REST API). (3) At your DNS host add `CNAME ola -> ghs.googlehosted.com.` The HTTPS certificate is issued by Google after DNS resolves (minutes to a few hours). Domain mappings are a preview feature of Cloud Run.
+- Do not redeploy during the evaluation. Check the site with:
 
 ```bash
 pnpm --filter @audion/api smoke https://SERVICE_URL
 ```
 
-It fetches the page, tracker and model files, checks health reports `live`, and makes one sentence and one voice
-call. It does not recognise a sign, so it cannot prove the tuned model is answering: do one real sign by hand too.
+It fetches the page, tracker and model files, checks health reports `live`, and makes one sentence, one translation
+and two voice calls. It does not recognise a sign: open the page once by hand, turn Ola on and sign (or use the
+camera) to confirm hand tracking and the on-device model run in a real browser.
 
 ## Privacy checks
 

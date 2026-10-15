@@ -8,6 +8,7 @@ import {
   recognizeFieldsSchema,
   sessionRequestSchema,
   speakRequestSchema,
+  translateRequestSchema,
   type HealthResponse,
 } from '@audion/shared';
 import cors from '@fastify/cors';
@@ -127,16 +128,16 @@ export async function buildApp(
     limiter.check(`install:${req.installId}`, config.limits.perInstall);
   };
 
-  app.get(
-    '/healthz',
-    async (): Promise<HealthResponse> => ({
-      ok: true,
-      mode: services.mode,
-      confidenceThreshold: config.confidenceThreshold,
-      modelId: services.recognizer.modelId,
-      voices: services.voices,
-    }),
-  );
+  const health = async (): Promise<HealthResponse> => ({
+    ok: true,
+    mode: services.mode,
+    confidenceThreshold: config.confidenceThreshold,
+    modelId: services.recognizer.modelId,
+    voices: services.voices,
+  });
+  app.get('/healthz', health);
+  // Cloud Run's front end answers /healthz itself (404) on its own addresses, so clients use this path.
+  app.get('/v1/health', health);
 
   app.post('/v1/session', async (req) => {
     limiter.check(`session:${req.ip}`, config.limits.sessionPerIp);
@@ -230,6 +231,22 @@ export async function buildApp(
     }
     req.log.info({ transcriptChars: body.transcript.length }, 'context summarised');
     return { summary };
+  });
+
+  // Live translation of the signer's sentence. The text is held in memory for this call, never stored or logged
+  // (only its length is).
+  app.post('/v1/translate', { preHandler: authed }, async (req) => {
+    limiter.check(`translate:${req.installId}`, config.limits.translatePerInstall);
+    const body = translateRequestSchema.parse(req.body);
+    let text: string;
+    try {
+      text = await services.translator.translate(body);
+    } catch (e) {
+      req.log.error({ errCode: (e as { code?: string }).code }, 'translator failed');
+      throw new AppError('MODEL_UNAVAILABLE', 'Translation is temporarily unavailable.');
+    }
+    req.log.info({ language: body.language, chars: body.text.length }, 'translated');
+    return { text };
   });
 
   app.post('/v1/speak', { preHandler: authed }, async (req, reply) => {

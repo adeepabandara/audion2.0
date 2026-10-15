@@ -9,6 +9,13 @@ afterEach(async () => app?.close());
 const auth = (token: string) => ({ authorization: `Bearer ${token}` });
 
 describe('healthz and session', () => {
+  it('also answers on /v1/health (Cloud Run reserves /healthz)', async () => {
+    ({ app } = await makeApp());
+    const res = await app.inject('/v1/health');
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toMatchObject({ ok: true, mode: 'mock' });
+  });
+
   it('reports mock mode', async () => {
     ({ app } = await makeApp());
     const res = await app.inject('/healthz');

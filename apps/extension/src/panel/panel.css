@@ -113,13 +113,73 @@
   }
 }
 .ap-card {
-  width: 336px; /* ~320 of content once a scrollbar appears on short windows */
-  overflow-x: hidden;
-  overflow-y: auto;
-  display: grid;
-  gap: 12px;
+  width: 336px;
+  /* A fixed height, and nothing in the card scrolls: what appears inside (signs, a sentence, a message) fills fixed
+     rows or is cut short. On a short window the inline max-height shrinks the card and the camera picture, the one
+     flexible part, gets shorter. */
+  height: var(--ap-card-height, 540px);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
   padding: 12px;
+  overflow: hidden;
   border-radius: var(--au-radius-lg);
+}
+.ap-card__body {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  overflow: hidden;
+}
+.ap-card__body > * {
+  flex: none;
+}
+.ap-card__body > .ap-preview {
+  flex: 1 1 208px;
+}
+/* The header: a smaller Ola, and room for the status to be written out ("Ready", "Signing") next to the toggle. */
+.ap-card__head {
+  gap: 4px;
+}
+/* A narrower toggle and a smaller collapse button in the header leave the status pill room for its word. */
+.ap-card__head .au-switch {
+  width: 60px;
+}
+.ap-card__head .au-switch[data-state='checked'] .au-switch__thumb {
+  transform: translateX(30px);
+}
+.ap-card__head .au-switch[data-state='unchecked'] .au-switch__text {
+  right: 8px;
+}
+.ap-card__head .au-switch[data-state='checked'] .au-switch__text {
+  left: 9px;
+}
+.ap-card__head .au-btn {
+  width: 32px;
+  min-width: 32px;
+  height: 32px;
+  padding: 0;
+}
+.ap-card__head .ap-grip {
+  width: 28px;
+  margin-left: -6px;
+}
+.ap-card__head .au-pill {
+  flex: 0 1 auto;
+  min-width: 0;
+  padding: 0 8px;
+  gap: 5px;
+}
+.ap-card__head .au-pill > span:last-child {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.ap-card__head,
+.ap-foot {
+  flex: none;
 }
 .ap-card__head,
 .ap-actions,
@@ -130,8 +190,14 @@
   gap: 8px;
 }
 .ap-chips {
-  flex-wrap: wrap;
-  min-height: 36px;
+  /* One row that never grows and that the user cannot scroll: when there are more signs than fit, the row is moved
+     to the end by script so the newest stay in view and the oldest are cut off at the left. */
+  flex-wrap: nowrap;
+  height: 40px;
+  overflow: hidden;
+}
+.ap-chips > * {
+  flex: none;
 }
 .ap-spacer {
   flex: 1;
@@ -157,19 +223,28 @@
   place-items: center;
   align-content: center;
   gap: 6px;
-  aspect-ratio: 3 / 2;
+  flex: 1 1 208px; /* 3:2 at the card's width, as before */
+  min-height: 110px;
   border-radius: var(--au-radius-md);
   background: var(--au-surface);
   border: 1px solid var(--au-divider);
   color: var(--au-text-2);
 }
 .ap-sentence {
-  min-height: 64px;
-  padding: 12px;
+  height: 84px;
+  overflow: hidden;
+  padding: 8px 12px;
   border-radius: var(--au-radius-md);
   background: var(--au-surface);
-  font-size: var(--au-text-lg);
+  font-size: var(--au-text-md);
+  line-height: 1.35;
   font-weight: 600;
+}
+.ap-sentence__text {
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
 }
 .ap-actions > * {
   flex: 1;
@@ -350,10 +425,262 @@
   font-size: 0.75em;
   font-weight: 400;
 }
-/* The meeting summary under the signs: three lines at most, the rest is in the sentence's wording. */
-.ap-context {
-  display: -webkit-box;
-  -webkit-line-clamp: 3;
-  -webkit-box-orient: vertical;
-  overflow: hidden;
+
+/* The sentence card, with the meeting-context badge on its top-right corner. */
+.ap-sentence-wrap {
+  position: relative;
+  margin-top: 8px; /* room for the badge to sit half above the card */
+}
+.ap-sentence-wrap .ap-sentence {
+  padding-right: 34px; /* the text never runs under the badge */
+}
+.ap-ctx {
+  position: absolute;
+  top: -18px;
+  right: 8px;
+  z-index: 2;
+  display: grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  padding: 0;
+  border-radius: 50%;
+  border: 1px solid var(--au-divider);
+  background: var(--au-raised);
+  color: var(--au-text-2);
+  box-shadow: var(--au-shadow);
+  cursor: default;
+}
+.ap-ctx:focus-visible {
+  outline: 3px solid var(--au-focus);
+  outline-offset: 2px;
+}
+.ap-ctx__defs {
+  position: absolute;
+}
+/* Following the meeting: a soft glowing ring around the icon, quicker while a summary is being made. */
+.ap-ctx--live {
+  border-color: transparent;
+  background:
+    linear-gradient(var(--au-raised), var(--au-raised)) padding-box,
+    linear-gradient(135deg, var(--au-gemini-1), var(--au-gemini-2), var(--au-gemini-3)) border-box;
+  border: 1.5px solid transparent;
+  animation: ap-ring 2.8s ease-in-out infinite;
+}
+.ap-ctx--busy {
+  animation-duration: 1.2s;
+}
+.ap-ctx--live .ap-ctx__icon {
+  animation: ap-twinkle 2.8s ease-in-out infinite;
+}
+.ap-ctx--busy .ap-ctx__icon {
+  animation-duration: 1.2s;
+}
+@keyframes ap-ring {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 color-mix(in srgb, var(--au-gemini-2) 0%, transparent);
+  }
+  50% {
+    box-shadow: 0 0 0 5px color-mix(in srgb, var(--au-gemini-2) 28%, transparent);
+  }
+}
+@keyframes ap-twinkle {
+  0%,
+  100% {
+    transform: scale(1);
+    opacity: 1;
+  }
+  50% {
+    transform: scale(1.1);
+    opacity: 0.85;
+  }
+}
+
+/* Text in Gemini's colours: blue to violet to rose. It moves while Ola is following the meeting. */
+.ap-gemini {
+  background: linear-gradient(90deg, var(--au-gemini-1), var(--au-gemini-2), var(--au-gemini-3));
+  background-clip: text;
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  color: transparent;
+}
+.ap-gemini--live {
+  background-size: 220% 100%;
+  animation: ap-shimmer 2.4s linear infinite;
+}
+/* A summary is being refreshed right now: the shimmer is quicker. */
+.ap-gemini--busy {
+  animation-duration: 1.2s;
+}
+/* Not following the meeting: plain muted text, no colours. */
+.ap-gemini--off {
+  background: none;
+  -webkit-text-fill-color: currentcolor;
+  color: var(--au-text-2);
+}
+@keyframes ap-shimmer {
+  from {
+    background-position: 220% 0;
+  }
+  to {
+    background-position: 0 0;
+  }
+}
+
+/* The panel that opens beside the card: the title, then what Ola has picked up so far. */
+.au-tooltip.ap-context-tip {
+  display: grid;
+  gap: 8px;
+  max-width: 300px;
+  padding: 14px 16px;
+  background: var(--au-raised);
+  color: var(--au-text);
+  border: 1px solid var(--au-divider);
+  box-shadow: var(--au-shadow);
+  font-size: var(--au-text-sm);
+  font-weight: 400;
+  line-height: 1.5;
+  white-space: normal;
+}
+.au-tooltip.ap-context-tip[data-state='delayed-open'],
+.au-tooltip.ap-context-tip[data-state='instant-open'] {
+  animation: ap-tip-in 0.28s cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+.ap-context-tip__title {
+  font-size: var(--au-text-md);
+  font-weight: 700;
+  animation: ap-title-in 0.4s ease-out both;
+}
+.ap-context-tip__title.ap-gemini--live {
+  /* the entrance and the shimmer together */
+  animation:
+    ap-title-in 0.4s ease-out both,
+    ap-shimmer 2.4s linear infinite;
+}
+/* The words of the summary arrive one after another, a little after the title. */
+.ap-word {
+  display: inline-block;
+  opacity: 0;
+  transform: translateY(5px);
+  animation: ap-word-in 0.35s ease-out forwards;
+  animation-delay: calc(0.25s + var(--ap-i, 0) * var(--ap-step, 30ms));
+}
+@keyframes ap-tip-in {
+  from {
+    opacity: 0;
+    transform: translateX(8px) scale(0.97);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+@keyframes ap-title-in {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+@keyframes ap-word-in {
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .ap-ctx--live,
+  .ap-ctx--live .ap-ctx__icon,
+  .ap-gemini--live,
+  .ap-context-tip__title,
+  .au-tooltip.ap-context-tip {
+    animation: none !important;
+  }
+  .ap-word {
+    opacity: 1;
+    transform: none;
+    animation: none;
+  }
+}
+@media (forced-colors: active) {
+  .ap-gemini {
+    background: none;
+    -webkit-text-fill-color: currentcolor;
+    color: CanvasText;
+  }
+}
+
+/* A message about the picture sits over its bottom edge, one or two lines, so it never adds a row to the card. */
+.ap-preview > .au-banner {
+  position: absolute;
+  left: 6px;
+  right: 6px;
+  bottom: 6px;
+  z-index: 1;
+  padding: 6px 10px;
+  gap: 8px;
+  align-items: center;
+  background: var(--au-bg);
+  font-size: var(--au-text-sm);
+  line-height: 1.3;
+}
+.ap-preview > .ap-preview__note {
+  position: absolute;
+  left: 6px;
+  right: 6px;
+  bottom: 6px;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0;
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: rgb(0 0 0 / 70%);
+  color: #fff;
+  font-size: 12px;
+  line-height: 1.3;
+}
+
+/* The "Speak aloud" switch and the live-translation language picker share one row. */
+.ap-voice-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.ap-voice-row .au-toggle {
+  gap: 8px;
+  min-width: 0;
+}
+.ap-voice-row .au-toggle label {
+  white-space: nowrap;
+  font-size: 0.8125rem;
+}
+.ap-lang {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  color: var(--au-text-2);
+}
+.ap-lang select {
+  max-width: 104px;
+  min-height: 32px;
+  padding: 0 8px;
+  border: 1px solid var(--au-divider);
+  border-radius: 8px;
+  background: var(--au-raised);
+  color: var(--au-text);
+  font: inherit;
+  font-size: 0.8125rem;
+  cursor: pointer;
+}
+.ap-lang select:focus-visible {
+  outline: 2px solid var(--au-highlight);
+  outline-offset: 2px;
 }

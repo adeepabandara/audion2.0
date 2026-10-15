@@ -286,7 +286,7 @@ describe('composing, speaking and captions', () => {
       label: 'Voice not connected',
       problem: 'voiceUnavailable',
     });
-    expect(viewOf(noVoice).hint).toMatch(/Unmute your Meet microphone/);
+    expect(viewOf(noVoice).hint).toMatch(/Unmute Meet/);
     expect(reduce(base, { type: 'SPEAK_FAILED', reason: 'network' }).problems).toContain('offline');
     // Trying again clears the voice problem.
     expect(reduce(noVoice, { type: 'SPEAK_START' }).problems).not.toContain('voiceUnavailable');
@@ -316,10 +316,19 @@ describe('composing, speaking and captions', () => {
 describe('meeting context state', () => {
   it('starts off, follows CONTEXT events, and is reset by turning Ola off', () => {
     let s = initialMachine();
-    expect(s.context).toEqual({ state: 'off', summary: null });
-    s = reduce(s, { type: 'CONTEXT', state: 'following', summary: 'Planning the demo.' });
-    expect(s.context).toEqual({ state: 'following', summary: 'Planning the demo.' });
+    expect(s.context).toEqual({ state: 'off', summary: null, updating: false });
+    s = reduce(s, {
+      type: 'CONTEXT',
+      state: 'following',
+      summary: 'Planning the demo.',
+      updating: true,
+    });
+    expect(s.context).toEqual({
+      state: 'following',
+      summary: 'Planning the demo.',
+      updating: true,
+    });
     s = reduce(s, { type: 'TURN_OFF' });
-    expect(s.context).toEqual({ state: 'off', summary: null });
+    expect(s.context).toEqual({ state: 'off', summary: null, updating: false });
   });
 });

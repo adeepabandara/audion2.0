@@ -15,6 +15,8 @@ export type ContextState = 'off' | 'waiting' | 'following';
 export interface ContextUpdate {
   state: ContextState;
   summary: string | null;
+  /** True while a summary refresh is in flight (the panel shows "Updating context..."). */
+  updating: boolean;
 }
 
 export interface MeetingContextLike {
@@ -59,6 +61,7 @@ export class MeetingContext implements MeetingContextLike {
   private timer: unknown;
   private lastRefreshAt = 0;
   private busy = false;
+  private updating = false;
   private run = 0; // invalidates a summary that arrives after stop()
   private readonly listeners = new Set<(u: ContextUpdate) => void>();
   private readonly refreshed = new Set<
@@ -102,6 +105,7 @@ export class MeetingContext implements MeetingContextLike {
     this.recent = [];
     this.pending = [];
     this.summaryText = null;
+    this.updating = false;
     this.set('off');
   }
 
@@ -142,6 +146,7 @@ export class MeetingContext implements MeetingContextLike {
     const text = this.pending.join('\n');
     if (text.length < (this.o.minChars ?? 80)) return;
     this.busy = true;
+    this.setUpdating(true);
     const run = this.run;
     // Most recent captions first if there are too many; older ones are already in the previous summary.
     const transcript =
@@ -172,6 +177,7 @@ export class MeetingContext implements MeetingContextLike {
       }
     } finally {
       this.busy = false;
+      if (run === this.run) this.setUpdating(false);
     }
   }
 
@@ -181,7 +187,17 @@ export class MeetingContext implements MeetingContextLike {
 
   private set(state: ContextState): void {
     this.state = state;
-    const u = { state, summary: this.summaryText };
+    this.emit();
+  }
+
+  private setUpdating(on: boolean): void {
+    if (this.updating === on) return;
+    this.updating = on;
+    this.emit();
+  }
+
+  private emit(): void {
+    const u = { state: this.state, summary: this.summaryText, updating: this.updating };
     this.listeners.forEach((l) => l(u));
   }
 }

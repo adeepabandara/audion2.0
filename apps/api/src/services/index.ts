@@ -8,8 +8,10 @@ import { FallbackRecognizer } from './live/fallback.js';
 import { GeminiRecognizer } from './live/recognizer.js';
 import { CloudSpeaker, type TtsClient } from './live/speaker.js';
 import { GeminiSummarizer } from './live/summarizer.js';
+import { GeminiTranslator } from './live/translator.js';
 import { MockComposer } from './mock/composer.js';
 import { MockSummarizer } from './mock/summarizer.js';
+import { MockTranslator } from './mock/translator.js';
 import { MockRecognizer } from './mock/recognizer.js';
 import { MockSpeaker } from './mock/speaker.js';
 import type { Recognizer, Services } from './types.js';
@@ -75,6 +77,7 @@ export function createServices(config: Config): Services {
       recognizer,
       composer: new MockComposer(),
       summarizer: new MockSummarizer(),
+      translator: new MockTranslator(),
       ...(config.speakerMode === 'cloud'
         ? {
             voices: 'google' as const,
@@ -96,6 +99,12 @@ export function createServices(config: Config): Services {
       config.compose.thinkingLevel,
     ),
     summarizer: new GeminiSummarizer(
+      clientFor(config.compose.location),
+      config.compose.model,
+      undefined,
+      config.compose.thinkingLevel,
+    ),
+    translator: new GeminiTranslator(
       clientFor(config.compose.location),
       config.compose.model,
       undefined,

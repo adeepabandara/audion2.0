@@ -45,6 +45,21 @@ describe('MeetingContext', () => {
     expect(states).toEqual(['waiting', 'following']);
   });
 
+  it('says it is updating only while a summary is being made', async () => {
+    let release: (v: unknown) => void = () => {};
+    const slow = new Promise((r) => (release = r));
+    const { ctx, advance, feed } = setup({ reply: () => slow });
+    const flags: boolean[] = [];
+    ctx.onChange((u) => flags.push(u.updating));
+    ctx.start();
+    feed(['Priya: the demo is on Friday at three']);
+    await advance(16_000);
+    expect(flags.at(-1)).toBe(true); // refresh in flight
+    release({ ok: true, summary: 'done' });
+    await vi.waitFor(() => expect(flags.at(-1)).toBe(false));
+    expect(ctx.summary()).toBe('done');
+  });
+
   it('ignores captions until it is started', () => {
     const { ctx, feed, sent } = setup();
     feed(['Priya', 'this should not be kept']);

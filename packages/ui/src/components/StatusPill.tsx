@@ -24,16 +24,33 @@ export const STATUS_META: Record<Status, { icon: IconName; label: string; tone: 
 };
 
 /** Icon + text status (a red dot while off). Announced politely when it changes. */
-export function StatusPill({ status, label }: { status: Status; label?: string }) {
+export function StatusPill({
+  status,
+  label,
+  iconOnly,
+  title,
+}: {
+  status: Status;
+  label?: string;
+  /** Tooltip text when the label shown is a shortened form of it. */
+  title?: string;
+  /** Show just the icon (a red dot while off); the words stay for screen readers and as a tooltip. */
+  iconOnly?: boolean;
+}) {
   const meta = STATUS_META[status];
   return (
-    <span className={`au-pill au-pill--${meta.tone}`} role="status" aria-live="polite">
+    <span
+      className={`au-pill au-pill--${meta.tone}${iconOnly ? ' au-pill--icon' : ''}`}
+      role="status"
+      aria-live="polite"
+      title={title ?? (iconOnly ? (label ?? meta.label) : undefined)}
+    >
       {status === 'off' ? (
         <span className="au-pill__dot" aria-hidden="true" />
       ) : (
         <Icon name={meta.icon} size={18} />
       )}
-      <span>{label ?? meta.label}</span>
+      <span className={iconOnly ? 'au-sr-only' : undefined}>{label ?? meta.label}</span>
     </span>
   );
 }

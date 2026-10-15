@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { LANGUAGE_CODES } from './languages.js';
 import { DEFAULT_PAUSE_MS, MAX_SPEED, MIN_SPEED } from './constants.js';
 import { VOICE_IDS } from './voices.js';
 
@@ -12,7 +13,8 @@ export const settingsSchema = z.object({
   speakMode: z.enum(['auto', 'confirm']).catch('auto'),
   captionSize: z.enum(['small', 'medium', 'large']).catch('medium'),
   captionPosition: z.enum(['bottom', 'top']).catch('bottom'),
-  language: z.literal('en').catch('en'),
+  /** Live translation: Ola's sentence is translated into this language (captioned and spoken). 'en' = off. */
+  language: z.enum(LANGUAGE_CODES).catch('en'),
   postToChat: z.boolean().catch(false),
   /** Also play Ola's voice on this device's speakers, so the signer hears what the call hears. */
   monitorVoice: z.boolean().catch(true),
