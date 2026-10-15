@@ -70,7 +70,12 @@ describe('settings', () => {
     expect(parseSettings({})).toEqual(SETTINGS_DEFAULTS);
     expect(parseSettings(null)).toEqual(SETTINGS_DEFAULTS);
     expect(parseSettings('x')).toEqual(SETTINGS_DEFAULTS);
-    expect(SETTINGS_DEFAULTS).toMatchObject({ speakMode: 'auto', postToChat: false, speed: 1 });
+    expect(SETTINGS_DEFAULTS).toMatchObject({
+      speakMode: 'auto',
+      postToChat: false,
+      monitorVoice: true,
+      speed: 1,
+    });
   });
 
   it('falls back per field, keeping valid values', () => {

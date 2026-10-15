@@ -3,6 +3,7 @@ import type { Recognizer } from '../types.js';
 
 /** Scripted recogniser: cycles through the vocabulary; a configurable share of answers is low confidence. */
 export class MockRecognizer implements Recognizer {
+  readonly modelId = 'mock';
   private n = 0;
 
   constructor(private readonly lowConfidenceRate: number) {}
@@ -14,6 +15,7 @@ export class MockRecognizer implements Recognizer {
     const low = ((i * 37) % 100) / 100 < this.lowConfidenceRate;
     const top = low ? 0.35 : 0.92;
     return {
+      modelId: this.modelId,
       sign: at(0),
       confidence: top,
       alternatives: [

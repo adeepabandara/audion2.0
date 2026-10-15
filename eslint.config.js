@@ -6,6 +6,7 @@ export default tseslint.config(
   {
     ignores: [
       '**/dist/**',
+      '**/dist-web/**',
       '**/.output/**',
       '**/.wxt/**',
       '**/node_modules/**',
@@ -23,6 +24,7 @@ export default tseslint.config(
   },
   { files: ['tools/fake-meet/*.js'], languageOptions: { globals: globals.browser } },
   { files: ['tools/eval/src/cli.ts', 'tools/eval/src/segment.ts'], rules: { 'no-console': 'off' } }, // CLIs print their report
+  { files: ['apps/api/scripts/*.ts'], rules: { 'no-console': 'off' } }, // dev scripts print their report
   { files: ['e2e/**/*.ts'], rules: { 'no-empty-pattern': 'off' } }, // Playwright fixtures must destructure `{}`
   {
     files: ['**/*.mjs'],

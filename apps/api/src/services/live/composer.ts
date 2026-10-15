@@ -1,4 +1,5 @@
-import { COMPOSE_SYSTEM_PROMPT, type ComposeRequest } from '@audion/shared';
+import type { ThinkingLevel } from '@google/genai';
+import { COMPOSE_CONTEXT_NOTE, COMPOSE_SYSTEM_PROMPT, type ComposeRequest } from '@audion/shared';
 import { AppError } from '../../errors.js';
 import type { Composer } from '../types.js';
 import type { GenAIClient } from './client.js';
@@ -12,8 +13,10 @@ const SHOTS: Array<[string[], string]> = [
   [['where', 'time'], 'Where is the time?'],
 ];
 
-const glossLine = (signs: string[], tone?: string) =>
-  `Glosses: ${signs.join(', ')}${tone === 'polite' ? '\nTone: polite' : ''}`;
+const glossLine = (signs: string[], tone?: string, context?: string) =>
+  `${context ? `Meeting context: ${context}\n` : ''}Glosses: ${signs.join(', ')}${
+    tone === 'polite' ? '\nTone: polite' : ''
+  }`;
 
 /** Turns glosses into one sentence with a Gemini text model. The route's grounding guard checks the result. */
 export class GeminiComposer implements Composer {
@@ -21,9 +24,15 @@ export class GeminiComposer implements Composer {
     private readonly client: GenAIClient,
     private readonly model: string,
     private readonly timeoutMs: number = TIMEOUTS.composeMs,
+    /** Less thinking is faster. Unset = the model's default (about 2 s for one short sentence). */
+    private readonly thinkingLevel?: string,
   ) {}
 
-  async compose({ signs, tone }: ComposeRequest): Promise<string> {
+  async warmUp(): Promise<void> {
+    await this.compose({ signs: ['hello', 'please'] }).catch(() => {});
+  }
+
+  async compose({ signs, tone, context }: ComposeRequest): Promise<string> {
     let res;
     try {
       res = await withTimeout(this.timeoutMs, (abortSignal) =>
@@ -34,14 +43,23 @@ export class GeminiComposer implements Composer {
               { role: 'user', parts: [{ text: glossLine(g) }] },
               { role: 'model', parts: [{ text: s }] },
             ]),
-            { role: 'user', parts: [{ text: glossLine(signs, tone) }] },
+            { role: 'user', parts: [{ text: glossLine(signs, tone, context) }] },
           ],
           config: {
-            systemInstruction: COMPOSE_SYSTEM_PROMPT,
+            systemInstruction: context
+              ? `${COMPOSE_SYSTEM_PROMPT} ${COMPOSE_CONTEXT_NOTE}`
+              : COMPOSE_SYSTEM_PROMPT,
             temperature: 0.2,
             maxOutputTokens: 2048,
             candidateCount: 1,
             abortSignal,
+            ...(this.thinkingLevel
+              ? {
+                  thinkingConfig: {
+                    thinkingLevel: this.thinkingLevel.toUpperCase() as ThinkingLevel,
+                  },
+                }
+              : {}),
           },
         }),
       );

@@ -22,3 +22,14 @@ for (const signal of ['SIGINT', 'SIGTERM'] as const) {
 }
 
 await app.listen({ port: config.port, host: '0.0.0.0' });
+
+// The first real request after a start is much slower (connection, credentials); do that work now, in the
+// background, so the first sign is not the one that pays. Mock services have nothing to warm.
+if (config.warmUp) {
+  const started = Date.now();
+  void Promise.allSettled([
+    services.recognizer.warmUp?.(),
+    services.composer.warmUp?.(),
+    services.speaker.warmUp?.(),
+  ]).then(() => app.log.info({ ms: Date.now() - started }, 'warm-up done'));
+}
