@@ -12,7 +12,7 @@ import {
   waitForState,
 } from '../../helpers/ext';
 
-test('sign -> sentence -> Audion voice in the call -> caption -> summary, with only /v1 traffic', async ({
+test('sign -> sentence -> Ola voice in the call -> caption -> summary, with only /v1 traffic', async ({
   page,
   context,
   requests,
@@ -20,18 +20,18 @@ test('sign -> sentence -> Audion voice in the call -> caption -> summary, with o
   await page.goto(FAKE_MEET);
 
   // The pill is mounted in a Shadow root, above the control bar.
-  const pill = page.getByRole('group', { name: 'Audion' });
+  const pill = page.getByRole('group', { name: 'Ola' });
   await expect(pill).toBeVisible();
   const pillBox = (await pill.boundingBox())!;
   const barBox = (await page.getByRole('toolbar', { name: 'Call controls' }).boundingBox())!;
   expect(pillBox.y + pillBox.height).toBeLessThanOrEqual(barBox.y); // never over Meet's controls
 
-  // Join: fake Meet asks for camera + microphone and receives Audion's mixed track.
+  // Join: fake Meet asks for camera + microphone and receives Ola's mixed track.
   await page.getByRole('button', { name: 'Join call' }).click();
   await expect(page.locator('#selfVideo')).toHaveJSProperty('paused', false);
   await installPeakMeter(page);
 
-  await pill.getByRole('switch', { name: 'Audion' }).click();
+  await pill.getByRole('switch', { name: 'Ola' }).click();
   await waitForState(page, (s) => s.on && s.phase === 'ready');
   await page.waitForTimeout(600);
   await resetPeak(page);
@@ -45,14 +45,14 @@ test('sign -> sentence -> Audion voice in the call -> caption -> summary, with o
     30_000,
   );
   expect(spoken.caption).toMatch(/^[A-Z].*[.?]$/);
-  expect(await peak(page)).toBeGreaterThan(0.05); // Audion's voice reached the outgoing microphone track
+  expect(await peak(page)).toBeGreaterThan(0.05); // Ola's voice reached the outgoing microphone track
 
   // The caption bar is visible and announced politely.
-  const caption = page.getByRole('status', { name: 'Audion caption' });
+  const caption = page.getByRole('status', { name: 'Ola caption' });
   await expect(caption).toContainText(spoken.caption!);
   await expect(caption).toHaveAttribute('aria-live', 'polite');
 
-  // Leaving the call turns Audion off and offers the transcript.
+  // Leaving the call turns Ola off and offers the transcript.
   await page.getByRole('button', { name: 'Leave call' }).click();
   const summary = page.getByRole('region', { name: 'Call summary' });
   await expect(summary).toBeVisible();

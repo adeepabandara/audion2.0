@@ -22,6 +22,10 @@ export function Toggle({ label, checked, onCheckedChange, disabled, hideLabel }:
         onCheckedChange={onCheckedChange}
         disabled={disabled}
       >
+        {/* The state in words, inside the switch. aria-checked already announces it, so this is decoration. */}
+        <span className="au-switch__text" aria-hidden="true">
+          {checked ? 'ON' : 'OFF'}
+        </span>
         <Switch.Thumb className="au-switch__thumb">
           <Icon name="check" size={14} strokeWidth={3} />
         </Switch.Thumb>
@@ -29,9 +33,6 @@ export function Toggle({ label, checked, onCheckedChange, disabled, hideLabel }:
       <label htmlFor={id} className={hideLabel ? 'au-sr-only' : undefined}>
         {label}
       </label>
-      <span className="au-toggle__state" aria-hidden="true">
-        {checked ? 'On' : 'Off'}
-      </span>
     </div>
   );
 }

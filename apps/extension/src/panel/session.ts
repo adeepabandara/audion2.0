@@ -1,4 +1,11 @@
-import { DEFAULT_CONFIDENCE_THRESHOLD, type Settings, type Sign } from '@audion/shared';
+import {
+  DEFAULT_CONFIDENCE_THRESHOLD,
+  CONTEXT_INTERVAL_MS,
+  DEFAULT_PAUSE_MS,
+  isSign,
+  type Settings,
+  type Sign,
+} from '@audion/shared';
 import {
   classifyMediaError,
   CAMERA_CONSTRAINTS,
@@ -6,6 +13,8 @@ import {
   sampleVideoLuminance,
 } from '../lib/camera';
 import { handsNearEdge, type LandmarkFrame } from '../lib/landmarks';
+import { watchCaptions } from '../lib/meetDom';
+import { playAudio } from '../lib/audioPlayer';
 import { postToChat, type ChatPostResult } from '../lib/meetDom';
 import { fromBase64, send as realSend, toBase64, type Request } from '../lib/messages';
 import {
@@ -24,6 +33,7 @@ import {
 } from '../lib/segmenter';
 import type { HandTracker } from '../lib/trackerClient';
 import { VoiceBridge, type VoiceChannel } from '../lib/voiceBridge';
+import { MeetingContext, type MeetingContextLike } from './meetingContext';
 import {
   initialMachine,
   pendingChip,
@@ -41,10 +51,21 @@ export interface SessionDeps {
   send(req: Request): Promise<unknown>;
   settings(): Pick<
     Settings,
-    'holdTimeMs' | 'pauseMs' | 'speakMode' | 'voiceId' | 'speed' | 'postToChat'
-  >;
+    'holdTimeMs' | 'pauseMs' | 'speakMode' | 'voiceId' | 'speed' | 'postToChat' | 'monitorVoice'
+  > &
+    Partial<Pick<Settings, 'fastSigns' | 'cloudCheck' | 'meetingContext'>>;
   /** Voice into the call: the MAIN-world inject script behind a postMessage bridge. */
   voice: VoiceChannel;
+  /**
+   * Follows the meeting's captions and keeps a short summary for wording sentences (opt-in). Absent in tests that do not
+   * exercise it.
+   */
+  context?: MeetingContextLike;
+  /**
+   * Play a sentence on this device's speakers without the call channel. Used when Meet has not given us the
+   * microphone (for example while it is muted), so the signer still hears their own voice.
+   */
+  playLocal(audio: Uint8Array): Promise<unknown>;
   /** Post a sentence to Meet chat (setting: postToChat). */
   chat(text: string): Promise<ChatPostResult>;
   luminance(video: HTMLVideoElement): number | null;
@@ -64,13 +85,24 @@ export function defaultDeps(trackerFor: () => HandTracker): SessionDeps {
     send: realSend as SessionDeps['send'],
     settings: () => ({
       holdTimeMs: 400,
-      pauseMs: 1500,
+      pauseMs: DEFAULT_PAUSE_MS,
       speakMode: 'auto',
       voiceId: 'aria',
       speed: 1,
       postToChat: false,
+      monitorVoice: true,
+      fastSigns: true,
+      cloudCheck: false,
+      meetingContext: false,
     }),
     voice: new VoiceBridge(),
+    context: new MeetingContext({
+      send: realSend as SessionDeps['send'],
+      watch: (onSnapshot) => watchCaptions(onSnapshot),
+      intervalMs: CONTEXT_INTERVAL_MS,
+      firstMs: 15_000,
+    }),
+    playLocal: (audio) => playAudio(audio),
     chat: (text) => postToChat(text),
     luminance: sampleVideoLuminance,
     now: () => performance.now(),
@@ -87,8 +119,50 @@ const EDGE_FRAMES = 3;
 const NOT_RECOGNISED_MS = 4000;
 const CAPTION_MS = 5000;
 const NOTICE_MS = 6000;
+/**
+ * Ask "Did you mean ...?" when the model is unsure of a sign. Off for now: every recognised sign is accepted as it is.
+ * The popover, the machine events and the threshold logic are all still in place, so turning this on again is this
+ * one flag (the threshold the server reports then decides what counts as unsure).
+ */
+export const CONFIRM_UNSURE_SIGNS = false;
+
+/**
+ * With no cloud check there is nobody to hand an unsure sign to, so the on-device answer is accepted down to this
+ * confidence (about 88% right on held-out test clips, answering on 91% of them); below it the signer signs again.
+ */
+export const DEVICE_ONLY_MIN_CONFIDENCE = 0.5;
+
+/** What the on-device classifier did with a sign. */
+interface Named {
+  /** Id of the chip it put on screen, when it was sure enough. */
+  chipId: number | null;
+  /** unavailable: no model, no answer, or the setting is off, so the cloud decides. */
+  outcome: 'named' | 'unsure' | 'unavailable';
+}
+
+/** How much recent hand movement to keep for naming a sign on the device. A sign lasts at most 4 s. */
+const FRAME_BUFFER_MS = 6000;
+
+const CAP_NOTICE = 'Ola has reached its daily recognition limit. Try again tomorrow.';
 
 type Listener = (s: MachineState) => void;
+
+/** What each step of the pipeline did and how long it took, for the web demo's "Live pipeline" log. */
+export type TraceEvent =
+  | { kind: 'device'; sign: string; confidence: number; ms: number }
+  | {
+      kind: 'device-unsure';
+      sign: string;
+      confidence: number;
+      threshold: number;
+      ms: number;
+      /** What happens next: the cloud decides, or the signer is asked to sign again. */
+      then: 'cloud' | 'retry';
+    }
+  | { kind: 'cloud'; role: 'check' | 'answer'; sign: string; ms: number; deviceSign?: string }
+  | { kind: 'sentence'; sentence: string; writer: string; ms: number }
+  | { kind: 'voice'; voiceId: string; ms: number }
+  | { kind: 'context'; summary: string; ms: number; chars: number };
 
 /**
  * Orchestrates one Audion session: camera, hand tracking, sign segmentation, clip recording, recognition and
@@ -99,6 +173,7 @@ export class AudionSession {
   private listeners = new Set<Listener>();
   private frameListeners = new Set<(f: LandmarkFrame) => void>();
   private pauseListeners = new Set<() => void>();
+  private traceListeners = new Set<(e: TraceEvent) => void>();
   private seg: SegmenterState = initialSegmenter();
   private video: HTMLVideoElement | null = null;
   private preview: HTMLVideoElement | null = null;
@@ -122,6 +197,10 @@ export class AudionSession {
   private sentenceSigns: string[] = [];
   private signLog: string[] = [];
   private offChannel: (() => void) | null = null;
+  private offDelivery: (() => void) | null = null;
+  private offContext: (() => void) | null = null;
+  /** Recent landmark frames, so the sign that just ended can be named on this device. Memory only, seconds long. */
+  private frameBuf: LandmarkFrame[] = [];
 
   constructor(private readonly deps: SessionDeps) {}
 
@@ -136,6 +215,44 @@ export class AudionSession {
   onFrame(l: (f: LandmarkFrame) => void): () => void {
     this.frameListeners.add(l);
     return () => this.frameListeners.delete(l);
+  }
+
+  /** Each pipeline step reports what it did (who named the sign, who wrote the sentence, which voice) and its time. */
+  onTrace(l: (e: TraceEvent) => void): () => void {
+    this.traceListeners.add(l);
+    return () => this.traceListeners.delete(l);
+  }
+
+  private trace(e: TraceEvent): void {
+    this.traceListeners.forEach((l) => l(e));
+  }
+
+  /**
+   * Start or stop following the meeting's captions (the opt-in "Meeting context" setting). Only while Ola is on.
+   * Stopping throws away the captions and the summary.
+   */
+  setMeetingContext(on: boolean): void {
+    const ctx = this.deps.context;
+    if (!ctx) return;
+    if (on && this.state.on) {
+      if (!this.offContext) {
+        const offChange = ctx.onChange((u) =>
+          this.dispatch({ type: 'CONTEXT', state: u.state, summary: u.summary }),
+        );
+        const offRefresh = ctx.onRefreshed?.((i) => this.trace({ kind: 'context', ...i }));
+        this.offContext = () => {
+          offChange();
+          offRefresh?.();
+        };
+      }
+      ctx.start();
+    } else {
+      ctx.stop();
+      this.offContext?.();
+      this.offContext = null;
+      if (this.state.context.state !== 'off')
+        this.dispatch({ type: 'CONTEXT', state: 'off', summary: null });
+    }
   }
 
   /** The signer paused after at least one sign (M6 uses this to compose a sentence). */
@@ -176,13 +293,15 @@ export class AudionSession {
     const run = ++this.run;
     this.dispatch({ type: 'TURN_ON' });
     this.seg = initialSegmenter();
+    this.frameBuf = [];
     this.darkStreak = this.edgeStreak = this.notEdgeStreak = 0;
     this.lightTimer = -Infinity;
 
     void this.deps.send({ type: 'api/health' }).then((h) => {
-      const res = h as { ok?: boolean; confidenceThreshold?: number } | undefined;
-      if (run === this.run && res?.ok && typeof res.confidenceThreshold === 'number')
-        this.threshold = res.confidenceThreshold;
+      const res = h as { ok?: boolean; confidenceThreshold?: number; modelId?: string } | undefined;
+      if (run !== this.run || !res?.ok) return;
+      if (typeof res.confidenceThreshold === 'number') this.threshold = res.confidenceThreshold;
+      if (res.modelId) this.dispatch({ type: 'MODEL_ID', modelId: res.modelId });
     });
 
     let stream: MediaStream;
@@ -217,36 +336,76 @@ export class AudionSession {
           mime: job.mime,
           durationMs: job.durationMs,
         })) as never,
-      onResult: (res) => {
+      onResult: (res, job) => {
+        if (res.modelId) this.dispatch({ type: 'MODEL_ID', modelId: res.modelId });
+        if (job.verifyFor !== undefined) {
+          const was = this.state.chips.find((c) => c.id === job.verifyFor)?.sign;
+          this.trace({
+            kind: 'cloud',
+            role: 'check',
+            sign: res.sign,
+            ms: res.latencyMs,
+            ...(was ? { deviceSign: was } : {}),
+          });
+          this.dispatch({
+            type: 'VERIFIED',
+            chipId: job.verifyFor,
+            sign: res.sign as Sign | 'unknown',
+          });
+          if (was && res.sign !== 'unknown' && res.sign !== was) {
+            this.showNotice(`Ola changed “${was}” to “${res.sign}” after checking.`);
+          }
+          return;
+        }
+        this.trace({ kind: 'cloud', role: 'answer', sign: res.sign, ms: res.latencyMs });
         this.dispatch({
           type: 'RECOGNISED',
           sign: res.sign as Sign | 'unknown',
           confidence: res.confidence,
-          threshold: this.threshold,
+          threshold: CONFIRM_UNSURE_SIGNS ? this.threshold : 0,
         });
         if (res.sign === 'unknown') this.autoDismissNotRecognised();
       },
-      onDropped: () => {
+      onDropped: (error, job) => {
+        if (error?.code === 'DAILY_CAP_REACHED') this.showNotice(CAP_NOTICE);
+        if (job.verifyFor !== undefined) {
+          // The device already answered; the check just could not be made, so the device answer stands.
+          this.dispatch({ type: 'VERIFIED', chipId: job.verifyFor, sign: 'unknown' });
+          return;
+        }
         this.dispatch({ type: 'RECOGNISE_FAILED', retryable: false });
         this.autoDismissNotRecognised();
       },
       onOnline: (online) => this.dispatch({ type: 'ONLINE', online }),
     });
     this.deps.voice.configure({ enabled: true, voiceMuted: this.voiceMuted });
-    this.offChannel = this.deps.voice.onChannel(({ micMuted }) =>
-      this.dispatch({ type: 'MIC_MUTED', muted: micMuted }),
+    this.offChannel = this.deps.voice.onChannel(({ hasChannel, micMuted }) => {
+      this.dispatch({ type: 'CALL_AUDIO', connected: hasChannel });
+      this.dispatch({ type: 'MIC_MUTED', muted: micMuted });
+    });
+    this.offDelivery = this.deps.voice.onDelivery((sent) =>
+      this.dispatch({ type: 'DELIVERY', sent }),
     );
+    // Meet may have asked for the microphone before Ola was switched on, so ask the page script what it has now.
+    void this.deps.voice.probe().then((p) => {
+      if (run !== this.run) return;
+      this.dispatch({ type: 'CALL_AUDIO', connected: p.hasChannel });
+      this.dispatch({ type: 'MIC_MUTED', muted: p.micMuted });
+    });
     this.dispatch({ type: 'CAMERA_READY' });
+    this.setMeetingContext(this.deps.settings().meetingContext === true);
     this.loop = this.deps.setInterval(() => void this.tick(), FRAME_INTERVAL_MS);
   }
 
   turnOff(): void {
     this.run++;
+    this.setMeetingContext(false);
     if (this.loop !== undefined) this.deps.clearInterval(this.loop);
     this.loop = undefined;
     this.recorder?.disarm();
     this.recorder = null;
     this.queue?.stop(); // discards any clips still waiting
+    this.frameBuf = [];
     this.queue = null;
     this.deps.tracker.stop();
     this.releaseCamera();
@@ -254,6 +413,8 @@ export class AudionSession {
     this.deps.voice.configure({ enabled: false, voiceMuted: this.voiceMuted });
     this.offChannel?.();
     this.offChannel = null;
+    this.offDelivery?.();
+    this.offDelivery = null;
     this.pauseSeen = false;
     for (const t of [this.dismissTimer, this.captionTimer, this.noticeTimer]) {
       if (t !== undefined) this.deps.clearTimeout(t);
@@ -301,8 +462,15 @@ export class AudionSession {
     const run = this.run;
     const signs = s.chips.map((c) => c.sign);
     this.dispatch({ type: 'COMPOSE_START' });
-    const res = (await this.deps.send({ type: 'api/compose', signs })) as
-      | { ok: true; sentence: string }
+    const composeStart = this.deps.now();
+    // The meeting summary (opt-in) helps word the sentence; it never replaces what was signed.
+    const context = this.deps.settings().meetingContext ? this.deps.context?.summary() : null;
+    const res = (await this.deps.send({
+      type: 'api/compose',
+      signs,
+      ...(context ? { context } : {}),
+    })) as
+      | { ok: true; sentence: string; writer?: string }
       | { ok: false; error?: { retryable?: boolean } }
       | undefined;
     if (run !== this.run) return;
@@ -311,6 +479,12 @@ export class AudionSession {
       return;
     }
     this.sentenceSigns = signs;
+    this.trace({
+      kind: 'sentence',
+      sentence: res.sentence,
+      writer: res.writer ?? 'the cloud model',
+      ms: Math.round(this.deps.now() - composeStart),
+    });
     this.dispatch({ type: 'COMPOSED', sentence: res.sentence });
     if (manual || this.deps.settings().speakMode === 'auto') await this.speak();
   }
@@ -325,6 +499,7 @@ export class AudionSession {
     if (this.captionTimer !== undefined) this.deps.clearTimeout(this.captionTimer);
 
     if (!this.voiceMuted) {
+      const speakStart = this.deps.now();
       const audio = (await this.deps.send({
         type: 'api/speak',
         text,
@@ -343,8 +518,19 @@ export class AudionSession {
         this.scheduleCaptionClear();
         return;
       }
-      const result = await this.deps.voice.speak(fromBase64(audio.audioBase64));
+      this.trace({
+        kind: 'voice',
+        voiceId: cfg.voiceId,
+        ms: Math.round(this.deps.now() - speakStart),
+      });
+      const bytes = fromBase64(audio.audioBase64);
+      const result = await this.deps.voice.speak(bytes, { monitor: cfg.monitorVoice });
       if (run !== this.run) return;
+      // No call channel (Meet has not given us the microphone, e.g. while muted): others cannot hear this, but
+      // the signer still should. The panel keeps saying the voice is not connected to the call.
+      if (result === 'no-channel' && cfg.monitorVoice) {
+        void Promise.resolve(this.deps.playLocal(bytes)).catch(() => {});
+      }
       if (result === 'no-channel' || result === 'disabled' || result === 'error') {
         this.dispatch({ type: 'SPEAK_FAILED', reason: result === 'error' ? 'other' : 'noChannel' });
         this.scheduleCaptionClear();
@@ -363,13 +549,15 @@ export class AudionSession {
     if (!postChat) return;
     const result = await this.deps.chat(text);
     if (run !== this.run || result === 'sent') return;
-    this.dispatch({
-      type: 'NOTICE',
-      text:
-        result === 'draft'
-          ? 'Not posted to Meet chat: there is a draft in the chat box.'
-          : 'Couldn’t post to Meet chat.',
-    });
+    this.showNotice(
+      result === 'draft'
+        ? 'Not posted to Meet chat: there is a draft in the chat box.'
+        : 'Couldn’t post to Meet chat.',
+    );
+  }
+
+  private showNotice(text: string) {
+    this.dispatch({ type: 'NOTICE', text });
     if (this.noticeTimer !== undefined) this.deps.clearTimeout(this.noticeTimer);
     this.noticeTimer = this.deps.setTimeout(
       () => this.dispatch({ type: 'NOTICE', text: null }),
@@ -402,6 +590,9 @@ export class AudionSession {
       const frame = frameOverride ?? (await this.deps.tracker.detect(video!));
       if (!frame || run !== this.run) return;
       this.frameListeners.forEach((l) => l(frame));
+      this.frameBuf.push(frame);
+      while (this.frameBuf.length && frame.t - this.frameBuf[0]!.t > FRAME_BUFFER_MS)
+        this.frameBuf.shift();
       this.checkLighting(frame.t, video);
       this.checkEdge(frame);
 
@@ -434,10 +625,12 @@ export class AudionSession {
         this.dispatch({ type: 'SIGN_STARTED' });
         this.recorder?.signStarted();
         break;
-      case 'signEnd':
+      case 'signEnd': {
         this.dispatch({ type: 'CLIP_READY' });
-        void this.takeClip(this.run);
+        const run = this.run;
+        void this.takeClip(run, this.nameOnDevice(ev.startT, ev.endT, run));
         break;
+      }
       case 'signDiscarded':
         this.dispatch({ type: 'CLIP_DISCARDED', reason: ev.reason });
         this.recorder?.disarm();
@@ -452,18 +645,83 @@ export class AudionSession {
     }
   }
 
-  private async takeClip(run: number): Promise<void> {
+  /**
+   * Try to name the sign that just ended with the on-device classifier. Resolves with the new chip's id when the
+   * device was confident enough (the chip is already on screen), else null and the cloud decides as before.
+   */
+  private nameOnDevice(startT: number, endT: number, run: number): Promise<Named> {
+    const tracker = this.deps.tracker;
+    const cfg = this.deps.settings();
+    const none: Named = { chipId: null, outcome: 'unavailable' };
+    if (cfg.fastSigns === false || !tracker.classify) return Promise.resolve(none);
+    const cloudChecks = cfg.cloudCheck === true;
+    const frames = this.frameBuf.filter((f) => f.t >= startT && f.t <= endT);
+    const v = this.video;
+    const aspect = v?.videoWidth && v.videoHeight ? v.videoWidth / v.videoHeight : 4 / 3;
+    const t0 = this.deps.now();
+    return tracker
+      .classify(frames, startT, endT, aspect)
+      .then((r): Named => {
+        if (run !== this.run || !r) return none;
+        const ms = Math.round(this.deps.now() - t0);
+        const needs = cloudChecks ? r.threshold : Math.min(r.threshold, DEVICE_ONLY_MIN_CONFIDENCE);
+        if (r.confidence < needs || !isSign(r.sign)) {
+          this.trace({
+            kind: 'device-unsure',
+            sign: r.sign,
+            confidence: r.confidence,
+            threshold: needs,
+            ms,
+            then: cloudChecks ? 'cloud' : 'retry',
+          });
+          return { chipId: null, outcome: 'unsure' };
+        }
+        this.trace({ kind: 'device', sign: r.sign, confidence: r.confidence, ms });
+        const chipId = this.state.nextId;
+        this.dispatch({
+          type: 'RECOGNISED_FAST',
+          sign: r.sign,
+          confidence: r.confidence,
+          checking: cloudChecks,
+        });
+        return { chipId, outcome: 'named' };
+      })
+      .catch(() => none);
+  }
+
+  private async takeClip(run: number, named: Promise<Named>): Promise<void> {
     const recorder = this.recorder;
-    const clip = recorder ? await recorder.finish() : null;
+    const [clip, { chipId, outcome }] = await Promise.all([
+      recorder ? recorder.finish() : null,
+      named,
+    ]);
     if (run !== this.run) return; // turned off meanwhile: drop the footage
     if (this.seg.phase !== 'idle') this.recorder?.arm(); // hands still up: ready for the next sign
-    if (
-      !clip ||
-      !this.queue?.enqueue({ clip: clip.blob, mime: clip.mime, durationMs: clip.durationMs })
-    ) {
-      this.dispatch({ type: 'RECOGNISE_FAILED', retryable: false });
-      this.autoDismissNotRecognised();
+    // Device only (no cloud check): the classifier's word is final and the clip is dropped, never sent anywhere.
+    // If the classifier was unavailable, the cloud still answers so a missing model does not stop recognition.
+    if (this.deps.settings().cloudCheck !== true && outcome !== 'unavailable') {
+      if (outcome === 'unsure') {
+        this.dispatch({ type: 'RECOGNISE_FAILED', retryable: false });
+        this.autoDismissNotRecognised();
+      }
+      return;
     }
+    const queued =
+      !!clip &&
+      !!this.queue?.enqueue({
+        clip: clip.blob,
+        mime: clip.mime,
+        durationMs: clip.durationMs,
+        ...(chipId !== null ? { verifyFor: chipId } : {}),
+      });
+    if (queued) return;
+    if (chipId !== null) {
+      // The device already answered, so there is nothing to wait for; the chip just stays unchecked-by-cloud.
+      this.dispatch({ type: 'VERIFIED', chipId, sign: 'unknown' });
+      return;
+    }
+    this.dispatch({ type: 'RECOGNISE_FAILED', retryable: false });
+    this.autoDismissNotRecognised();
   }
 
   private checkLighting(t: number, video: HTMLVideoElement | null) {

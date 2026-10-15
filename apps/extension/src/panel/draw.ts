@@ -34,13 +34,17 @@ type Ctx = Pick<
   lineWidth: number;
 };
 
-/** Draw landmark dots (and a faint skeleton) mirrored to match the mirrored preview video. */
+/**
+ * Draw landmark dots (and a faint skeleton), mirrored to match the mirrored preview video. A live camera preview is
+ * mirrored like a mirror; a video file is shown as it is, so `mirror` is false there.
+ */
 export function drawLandmarks(
   ctx: Ctx,
   frame: LandmarkFrame | null,
   w: number,
   h: number,
   color = '#2dd4bf',
+  mirror = true,
 ): number {
   ctx.clearRect(0, 0, w, h);
   if (!frame) return 0;
@@ -51,7 +55,7 @@ export function drawLandmarks(
   for (const hand of frame.hands) {
     const pt = (i: number) => {
       const p = hand.landmarks[i]!;
-      return [(1 - p.x) * w, p.y * h] as const;
+      return [(mirror ? 1 - p.x : p.x) * w, p.y * h] as const;
     };
     ctx.beginPath();
     for (const [a, b] of BONES) {

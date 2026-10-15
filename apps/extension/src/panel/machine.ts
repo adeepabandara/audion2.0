@@ -28,6 +28,18 @@ export interface ChipItem {
   sign: Sign;
   state: 'normal' | 'lowConfidence' | 'confirmed';
   confidence: number | null;
+  /** Named on this device (fast) rather than by the cloud model. */
+  source?: 'device';
+  /** A device answer the cloud model has not checked yet. */
+  checking?: boolean;
+  /** The cloud model disagreed and this is its answer (the device had guessed `was`). */
+  corrected?: { was: Sign };
+}
+
+/** Whether Ola is following the meeting's live captions, and the short summary it keeps of them. */
+export interface MeetingContextState {
+  state: 'off' | 'waiting' | 'following';
+  summary: string | null;
 }
 
 export interface MachineState {
@@ -45,10 +57,21 @@ export interface MachineState {
   sentenceIds: number[];
   /** Text for the on-screen caption bar (set when speaking starts, cleared a few seconds after). */
   caption: string | null;
-  /** Meet's own mute switch is on, so nobody can hear Audion. */
+  /** Meet's own mute switch is on, so nobody can hear Ola. */
   micMuted: boolean;
+  /**
+   * Whether Meet has given Ola a microphone stream to put its voice into (the "call channel"). `unknown` until the
+   * page script has answered. Without it others cannot hear Ola, though the signer still can.
+   */
+  callAudio: 'unknown' | 'connected' | 'none';
+  /** Did the last spoken sentence reach the call's outgoing audio? null = not measured / unknown. */
+  delivered: boolean | null;
   /** Short, non-blocking message (e.g. chat post skipped). */
   notice: string | null;
+  /** The meeting summary used to word sentences (opt-in, see settings.meetingContext). */
+  context: MeetingContextState;
+  /** Which recognition model the server reported (shown under About in Settings). Survives On/Off. */
+  modelId: string | null;
   chips: ChipItem[];
   problems: Problem[];
   cameraProblem: CameraProblem | null;
@@ -68,7 +91,11 @@ export const initialMachine = (): MachineState => ({
   sentenceIds: [],
   caption: null,
   micMuted: false,
+  callAudio: 'unknown',
+  delivered: null,
   notice: null,
+  modelId: null,
+  context: { state: 'off', summary: null },
   chips: [],
   problems: [],
   cameraProblem: null,
@@ -86,6 +113,10 @@ export type MachineEvent =
   | { type: 'CLIP_READY' }
   | { type: 'CLIP_DISCARDED'; reason: 'tooShort' | 'tooLong' }
   | { type: 'RECOGNISED'; sign: Sign | 'unknown'; confidence: number | null; threshold: number }
+  /** The on-device classifier named the sign right away; the cloud will check it. */
+  | { type: 'RECOGNISED_FAST'; sign: Sign; confidence: number; checking?: boolean }
+  /** The cloud's answer for a sign the device already named: confirm it, or correct the chip. */
+  | { type: 'VERIFIED'; chipId: number; sign: Sign | 'unknown' }
   | { type: 'RECOGNISE_FAILED'; retryable: boolean }
   | { type: 'CONFIRM_YES' }
   | { type: 'CONFIRM_RETRY' }
@@ -98,7 +129,11 @@ export type MachineEvent =
   | { type: 'SPEAK_FAILED'; reason: 'noChannel' | 'network' | 'other' }
   | { type: 'CAPTION_CLEAR' }
   | { type: 'MIC_MUTED'; muted: boolean }
+  | { type: 'CALL_AUDIO'; connected: boolean }
+  | { type: 'DELIVERY'; sent: boolean | null }
   | { type: 'NOTICE'; text: string | null }
+  | { type: 'CONTEXT'; state: MeetingContextState['state']; summary: string | null }
+  | { type: 'MODEL_ID'; modelId: string }
   | { type: 'LIGHT'; dark: boolean }
   | { type: 'HANDS_EDGE'; out: boolean }
   | { type: 'ONLINE'; online: boolean }
@@ -114,7 +149,7 @@ export const pendingChip = (s: MachineState): ChipItem | undefined =>
 export function reduce(s: MachineState, e: MachineEvent): MachineState {
   switch (e.type) {
     case 'TURN_ON':
-      return { ...initialMachine(), on: true, starting: true };
+      return { ...initialMachine(), modelId: s.modelId, on: true, starting: true };
     case 'CAMERA_READY':
       return s.on
         ? {
@@ -127,7 +162,7 @@ export function reduce(s: MachineState, e: MachineEvent): MachineState {
     case 'CAMERA_FAILED':
       return { ...initialMachine(), problems: ['cameraBlocked'], cameraProblem: e.problem };
     case 'TURN_OFF':
-      return initialMachine();
+      return { ...initialMachine(), modelId: s.modelId };
     case 'HANDS_APPEARED':
       return s.on && !s.starting ? { ...s, handsVisible: true } : s;
     case 'HANDS_LEFT':
@@ -167,6 +202,33 @@ export function reduce(s: MachineState, e: MachineEvent): MachineState {
         problems: withoutProblem(withoutProblem(s.problems, 'offline'), 'notRecognised'),
       };
     }
+    case 'RECOGNISED_FAST': {
+      const chip: ChipItem = {
+        id: s.nextId,
+        sign: e.sign,
+        state: 'normal',
+        confidence: e.confidence,
+        source: 'device',
+        checking: e.checking ?? true,
+      };
+      return {
+        ...s,
+        inFlight: Math.max(0, s.inFlight - 1),
+        chips: [...s.chips, chip],
+        nextId: s.nextId + 1,
+        problems: withoutProblem(withoutProblem(s.problems, 'offline'), 'notRecognised'),
+      };
+    }
+    case 'VERIFIED':
+      return {
+        ...s,
+        chips: s.chips.map((c) => {
+          if (c.id !== e.chipId) return c; // already spoken and removed: nothing to correct
+          // An 'unknown' from the cloud is not evidence against the device, so the device answer stands.
+          if (e.sign === 'unknown' || e.sign === c.sign) return { ...c, checking: false };
+          return { ...c, sign: e.sign, checking: false, corrected: { was: c.sign } };
+        }),
+      };
     case 'RECOGNISE_FAILED':
       return {
         ...s,
@@ -249,8 +311,18 @@ export function reduce(s: MachineState, e: MachineEvent): MachineState {
       return { ...s, caption: null };
     case 'MIC_MUTED':
       return { ...s, micMuted: e.muted };
+    case 'DELIVERY':
+      return s.delivered === e.sent ? s : { ...s, delivered: e.sent };
+    case 'CALL_AUDIO': {
+      const callAudio = e.connected ? 'connected' : 'none';
+      return s.callAudio === callAudio ? s : { ...s, callAudio };
+    }
+    case 'CONTEXT':
+      return { ...s, context: { state: e.state, summary: e.summary } };
     case 'NOTICE':
       return { ...s, notice: e.text };
+    case 'MODEL_ID':
+      return s.modelId === e.modelId ? s : { ...s, modelId: e.modelId };
     case 'LIGHT':
       return {
         ...s,
@@ -336,7 +408,7 @@ const PROBLEM_VIEW: Array<[Problem, { status: Status; label: string; hint: strin
     {
       status: 'attention',
       label: 'Voice not connected',
-      hint: 'Reload this Meet tab once so Audion can speak in the call.',
+      hint: 'Unmute your Meet microphone, or reload this Meet tab once, so Ola can speak in the call. You still hear it yourself.',
     },
   ],
   [

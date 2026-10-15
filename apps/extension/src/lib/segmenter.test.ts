@@ -128,6 +128,33 @@ describe('segmenter', () => {
     expect(types(ev).filter((x) => x === 'pause')).toHaveLength(1);
   });
 
+  it('emits the pause even when the hands stay in view after the sign', () => {
+    const ev = runSegmenter(
+      makeFrames([
+        { kind: 'still', ms: 200 },
+        { kind: 'move', ms: 1200 },
+        { kind: 'still', ms: 3500 }, // hands rest in the picture, never leave
+      ]),
+    );
+    expect(types(ev)).toEqual(['handsAppeared', 'signStart', 'signEnd', 'pause']);
+    expect(types(ev)).not.toContain('handsLeft');
+  });
+
+  it('does not emit a pause while a new sign is under way, only after the last one', () => {
+    const ev = runSegmenter(
+      makeFrames([
+        { kind: 'still', ms: 200 },
+        { kind: 'move', ms: 1200 },
+        { kind: 'still', ms: 900 }, // sign 1 ends; less than the pause has passed
+        { kind: 'move', ms: 1200 }, // sign 2 starts before the pause
+        { kind: 'still', ms: 3500 },
+      ]),
+    );
+    expect(types(ev).filter((x) => x === 'signEnd')).toHaveLength(2);
+    expect(types(ev).filter((x) => x === 'pause')).toHaveLength(1);
+    expect(types(ev).at(-1)).toBe('pause'); // and it comes after the second sign
+  });
+
   it('does not emit a pause when no sign was completed', () => {
     const ev = runSegmenter(
       makeFrames([

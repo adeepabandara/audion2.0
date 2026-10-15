@@ -1,10 +1,12 @@
 import {
   composeResponseSchema,
+  contextResponseSchema,
   errorResponseSchema,
   healthResponseSchema,
   recognizeResponseSchema,
   sessionResponseSchema,
   type ComposeRequest,
+  type ContextRequest,
   type SpeakRequest,
 } from '@audion/shared';
 import type { Failure } from './messages';
@@ -90,7 +92,14 @@ export function createApiClient({
   });
 
   return {
-    async health(): Promise<Result<{ mode: 'live' | 'mock'; confidenceThreshold?: number }>> {
+    async health(): Promise<
+      Result<{
+        mode: 'live' | 'mock';
+        confidenceThreshold?: number;
+        modelId?: string;
+        voices?: 'google' | 'mock';
+      }>
+    > {
       try {
         const res = await fetchImpl(`${baseUrl}/healthz`);
         if (!res.ok) return await failure(res);
@@ -131,6 +140,13 @@ export function createApiClient({
     }): Promise<{ ok: true } | Failure> {
       const res = await authed('/v1/feedback', (t) => json(t, req));
       return isFailure(res) ? res : { ok: true };
+    },
+
+    /** Refresh the running meeting summary from new live-caption text. The text is never stored. */
+    async context(req: ContextRequest) {
+      const res = await authed('/v1/context', (t) => json(t, req));
+      if (isFailure(res)) return res;
+      return { ok: true as const, ...contextResponseSchema.parse(await res.json()) };
     },
 
     async compose(req: ComposeRequest) {

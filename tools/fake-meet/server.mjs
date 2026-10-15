@@ -18,6 +18,7 @@ const types = {
   '.wasm': 'application/wasm',
   '.json': 'application/json',
   '.png': 'image/png',
+  '.webp': 'image/webp',
   '.task': 'application/octet-stream',
 };
 

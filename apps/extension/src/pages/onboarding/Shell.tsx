@@ -18,11 +18,22 @@ export function Steps({ active, total = 3 }: { active: number[]; total?: number 
   );
 }
 
-export function Shell({ children, center }: { children: ReactNode; center?: boolean }) {
+export function Shell({
+  children,
+  center,
+  logoSize,
+  fixed,
+}: {
+  children: ReactNode;
+  center?: boolean;
+  logoSize?: number;
+  /** One screen, no scrolling (the welcome page). */
+  fixed?: boolean;
+}) {
   return (
-    <div className="ob">
+    <div className={`ob${fixed ? ' ob--fixed' : ''}`}>
       <main className={`ob__main${center ? ' ob__center' : ''}`}>
-        <Wordmark />
+        <Wordmark size={logoSize} />
         {children}
       </main>
     </div>

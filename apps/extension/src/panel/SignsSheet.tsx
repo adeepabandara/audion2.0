@@ -16,7 +16,7 @@ export function SignsSheet({
       modal={false}
       width={440}
       title="Supported signs"
-      description="Audion recognises these 22 American Sign Language signs. Sign slowly and clearly, one at a time."
+      description="Ola recognises these 22 American Sign Language signs. Sign slowly and clearly, one at a time."
     >
       <ul className="ap-signs">
         {SIGN_LIST.map((s) => (

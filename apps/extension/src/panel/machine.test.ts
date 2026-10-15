@@ -84,6 +84,40 @@ describe('panel state machine: main path', () => {
     expect(off).toEqual(initialMachine());
   });
 
+  it('remembers whether the last sentence reached the call, and starts afresh when switched on', () => {
+    let s = run(on());
+    expect(s.delivered).toBeNull();
+    s = reduce(s, { type: 'DELIVERY', sent: false });
+    expect(s.delivered).toBe(false);
+    expect(reduce(s, { type: 'DELIVERY', sent: false })).toBe(s);
+    s = reduce(s, { type: 'DELIVERY', sent: true });
+    expect(s.delivered).toBe(true);
+    expect(run([{ type: 'TURN_OFF' }, { type: 'TURN_ON' }], s).delivered).toBeNull();
+  });
+
+  it('tracks whether Meet gave Ola a microphone stream to speak into the call', () => {
+    let s = run(on());
+    expect(s.callAudio).toBe('unknown');
+    s = reduce(s, { type: 'CALL_AUDIO', connected: true });
+    expect(s.callAudio).toBe('connected');
+    expect(reduce(s, { type: 'CALL_AUDIO', connected: true })).toBe(s); // no needless change
+    s = reduce(s, { type: 'CALL_AUDIO', connected: false });
+    expect(s.callAudio).toBe('none');
+    expect(run([{ type: 'TURN_OFF' }], s).callAudio).toBe('unknown'); // it must be re-checked next time
+  });
+
+  it('remembers which recognition model the server reported, across off and on', () => {
+    let s = run([...on(), { type: 'MODEL_ID', modelId: 'tuned:42' }]);
+    expect(s.modelId).toBe('tuned:42');
+    s = run([{ type: 'TURN_OFF' }], s);
+    expect(s.modelId).toBe('tuned:42');
+    s = run([{ type: 'TURN_ON' }], s);
+    expect(s.modelId).toBe('tuned:42');
+    expect(initialMachine().modelId).toBeNull();
+    const same = reduce(s, { type: 'MODEL_ID', modelId: 'tuned:42' });
+    expect(same).toBe(s); // no needless state change
+  });
+
   it('keeps recognising while several clips are in flight', () => {
     let s = run([...on(), { type: 'CLIP_READY' }, { type: 'CLIP_READY' }]);
     expect(s.inFlight).toBe(2);
@@ -252,7 +286,7 @@ describe('composing, speaking and captions', () => {
       label: 'Voice not connected',
       problem: 'voiceUnavailable',
     });
-    expect(viewOf(noVoice).hint).toMatch(/Reload this Meet tab/);
+    expect(viewOf(noVoice).hint).toMatch(/Unmute your Meet microphone/);
     expect(reduce(base, { type: 'SPEAK_FAILED', reason: 'network' }).problems).toContain('offline');
     // Trying again clears the voice problem.
     expect(reduce(noVoice, { type: 'SPEAK_START' }).problems).not.toContain('voiceUnavailable');
@@ -276,5 +310,16 @@ describe('composing, speaking and captions', () => {
     expect(phaseOf(s)).toBe('chips');
     expect(s.chips).toHaveLength(1);
     expect(s.problems).toContain('offline');
+  });
+});
+
+describe('meeting context state', () => {
+  it('starts off, follows CONTEXT events, and is reset by turning Ola off', () => {
+    let s = initialMachine();
+    expect(s.context).toEqual({ state: 'off', summary: null });
+    s = reduce(s, { type: 'CONTEXT', state: 'following', summary: 'Planning the demo.' });
+    expect(s.context).toEqual({ state: 'following', summary: 'Planning the demo.' });
+    s = reduce(s, { type: 'TURN_OFF' });
+    expect(s.context).toEqual({ state: 'off', summary: null });
   });
 });

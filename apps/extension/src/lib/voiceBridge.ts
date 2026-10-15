@@ -14,9 +14,11 @@ export interface Probe {
 }
 
 export interface VoiceChannel {
-  speak(audio: Uint8Array): Promise<SpeakResult>;
+  speak(audio: Uint8Array, opts?: { monitor?: boolean }): Promise<SpeakResult>;
   configure(opts: { enabled: boolean; voiceMuted: boolean }): void;
   onChannel(cb: (s: { hasChannel: boolean; micMuted: boolean }) => void): () => void;
+  /** After each spoken sentence: did it reach the call's outgoing audio (true), not (false), or unknown (null)? */
+  onDelivery(cb: (sent: boolean | null) => void): () => void;
   probe(): Promise<Probe>;
   dispose(): void;
 }
@@ -26,11 +28,17 @@ export class VoiceBridge implements VoiceChannel {
   private nextId = 1;
   private pending = new Map<number, (m: FromInject) => void>();
   private listeners = new Set<(s: { hasChannel: boolean; micMuted: boolean }) => void>();
+  private deliveryListeners = new Set<(sent: boolean | null) => void>();
   private readonly onMessage = (e: MessageEvent) => {
     if (!isSameWindowMessage(e, this.win) || !isFromInject(e.data)) return;
     const m = e.data;
     if (m.type === 'channel') this.listeners.forEach((l) => l(m));
-    else if (m.type === 'speak-result' || m.type === 'probe-result') this.pending.get(m.id)?.(m);
+    else if (m.type === 'speak-result' || m.type === 'probe-result') {
+      this.pending.get(m.id)?.(m);
+      if (m.type === 'speak-result' && m.sent !== undefined) {
+        this.deliveryListeners.forEach((l) => l(m.sent ?? null));
+      }
+    }
   };
 
   constructor(
@@ -61,13 +69,19 @@ export class VoiceBridge implements VoiceChannel {
     });
   }
 
-  async speak(audio: Uint8Array): Promise<SpeakResult> {
+  async speak(audio: Uint8Array, opts: { monitor?: boolean } = {}): Promise<SpeakResult> {
     const buf = audio.buffer.slice(
       audio.byteOffset,
       audio.byteOffset + audio.byteLength,
     ) as ArrayBuffer;
     const res = await this.request<Extract<FromInject, { type: 'speak-result' }>>(
-      (id) => ({ source: CONTENT_SOURCE, type: 'speak', id, audio: buf }),
+      (id) => ({
+        source: CONTENT_SOURCE,
+        type: 'speak',
+        id,
+        audio: buf,
+        monitor: opts.monitor === true,
+      }),
       [buf],
       { source: 'audion-inject', type: 'speak-result', id: -1, result: 'error' },
     );
@@ -81,6 +95,11 @@ export class VoiceBridge implements VoiceChannel {
   onChannel(cb: (s: { hasChannel: boolean; micMuted: boolean }) => void): () => void {
     this.listeners.add(cb);
     return () => this.listeners.delete(cb);
+  }
+
+  onDelivery(cb: (sent: boolean | null) => void): () => void {
+    this.deliveryListeners.add(cb);
+    return () => this.deliveryListeners.delete(cb);
   }
 
   async probe(): Promise<Probe> {
@@ -103,5 +122,6 @@ export class VoiceBridge implements VoiceChannel {
     this.win.removeEventListener('message', this.onMessage);
     this.pending.clear();
     this.listeners.clear();
+    this.deliveryListeners.clear();
   }
 }

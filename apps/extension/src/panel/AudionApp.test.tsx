@@ -15,7 +15,7 @@ let host: HTMLElement;
 let root: Root;
 
 /** Mounts the app exactly like the content script does: React inside a Shadow root. */
-async function mount(session = fakeSession().session) {
+async function mount(session = fakeSession().session, extra: { bounds?: HTMLElement } = {}) {
   const settings = createSettingsStore(memoryStore());
   vi.spyOn(settingsModule, 'getSettingsStore').mockReturnValue(settings);
   const prefs = memoryStore();
@@ -34,12 +34,11 @@ async function mount(session = fakeSession().session) {
         portalContainer={container}
         alwaysShow
         panelStore={panelStore}
+        {...extra}
       />,
     );
   });
-  await waitFor(() =>
-    expect(within(container).getByRole('group', { name: 'Audion' })).toBeTruthy(),
-  );
+  await waitFor(() => expect(within(container).getByRole('group', { name: 'Ola' })).toBeTruthy());
   return { ui: within(container), container, shadow, settings, prefs, panelStore, session };
 }
 
@@ -66,20 +65,20 @@ describe('Audion in a Shadow root', () => {
   it('starts as a collapsed pill: Off, with icon + text status', async () => {
     const { ui } = await mount();
     expect(ui.getByRole('status').textContent).toBe('Off');
-    expect(ui.getByRole('switch', { name: 'Audion' }).getAttribute('aria-checked')).toBe('false');
+    expect(ui.getByRole('switch', { name: 'Ola' }).getAttribute('aria-checked')).toBe('false');
   });
 
   it('toggling On updates the status; expanding and collapsing is remembered', async () => {
     const { ui, prefs } = await mount();
-    fireEvent.click(ui.getByRole('switch', { name: 'Audion' }));
+    fireEvent.click(ui.getByRole('switch', { name: 'Ola' }));
     await waitFor(() => expect(ui.getByRole('status').textContent).toBe('Ready'));
 
-    fireEvent.click(ui.getByRole('button', { name: 'Expand Audion' }));
-    expect(ui.getByRole('region', { name: 'Audion panel' })).toBeTruthy();
+    fireEvent.click(ui.getByRole('button', { name: 'Expand Ola' }));
+    expect(ui.getByRole('region', { name: 'Ola panel' })).toBeTruthy();
     expect(await prefs.get('panelPrefs')).toMatchObject({ expanded: true });
 
-    fireEvent.click(ui.getByRole('button', { name: 'Collapse Audion' }));
-    expect(ui.getByRole('group', { name: 'Audion' })).toBeTruthy();
+    fireEvent.click(ui.getByRole('button', { name: 'Collapse Ola' }));
+    expect(ui.getByRole('group', { name: 'Ola' })).toBeTruthy();
     expect(await prefs.get('panelPrefs')).toMatchObject({ expanded: false });
   });
 
@@ -106,16 +105,16 @@ describe('Audion in a Shadow root', () => {
         />,
       ),
     );
-    const card = await within(container).findByRole('region', { name: 'Audion panel' });
+    const card = await within(container).findByRole('region', { name: 'Ola panel' });
     expect(card.style.right).toBe('200px');
     expect(card.style.bottom).toBe('300px');
   });
 
   it('moves with the keyboard, saves the position, and never goes below the control bar', async () => {
     const { ui, prefs } = await mount();
-    fireEvent.click(ui.getByRole('button', { name: 'Expand Audion' }));
-    const card = ui.getByRole('region', { name: 'Audion panel' });
-    const grip = ui.getByRole('button', { name: /Move Audion panel/ });
+    fireEvent.click(ui.getByRole('button', { name: 'Expand Ola' }));
+    const card = ui.getByRole('region', { name: 'Ola panel' });
+    const grip = ui.getByRole('button', { name: /Move Ola panel/ });
     const bottom0 = parseInt(card.style.bottom);
     expect(bottom0).toBeGreaterThanOrEqual(96); // default clearance above the (unfound) bar
 
@@ -131,13 +130,20 @@ describe('Audion in a Shadow root', () => {
 
   it('opens the settings drawer inside the shadow root and saves changes', async () => {
     const { ui, settings, shadow } = await mount();
-    fireEvent.click(ui.getByRole('button', { name: 'Expand Audion' }));
+    fireEvent.click(ui.getByRole('button', { name: 'Expand Ola' }));
     fireEvent.click(ui.getByRole('button', { name: 'Settings' }));
     const drawer = await ui.findByRole('dialog', { name: 'Settings' });
     expect(shadow.contains(drawer)).toBe(true);
 
     fireEvent.click(within(drawer).getByRole('radio', { name: 'Confirm first' }));
     await waitFor(() => expect(settings.useStore.getState().settings.speakMode).toBe('confirm'));
+
+    // Hearing Ola's voice on this device is on by default and can be switched off.
+    expect(settings.useStore.getState().settings.monitorVoice).toBe(true);
+    fireEvent.click(
+      within(drawer).getByRole('switch', { name: 'Hear Ola’s voice on this device' }),
+    );
+    await waitFor(() => expect(settings.useStore.getState().settings.monitorVoice).toBe(false));
 
     fireEvent.click(within(drawer).getByRole('switch', { name: /post sentences to Meet chat/ }));
     await waitFor(() => expect(settings.useStore.getState().settings.postToChat).toBe(true));
@@ -148,12 +154,49 @@ describe('Audion in a Shadow root', () => {
     expect((privacy as HTMLButtonElement).disabled).toBe(true);
     expect(within(drawer).getAllByText('Coming soon').length).toBeGreaterThan(0);
     expect(within(drawer).getByText(/PopSign ASL v1.0 \(CC BY 4.0\)/)).toBeTruthy();
-    expect(within(drawer).getByText(/can’t see Audion’s own caption bar/)).toBeTruthy();
+    expect(within(drawer).getByText(/can’t see Ola’s own caption bar/)).toBeTruthy();
+    expect(within(drawer).getByText(/not known yet/)).toBeTruthy(); // no model reported yet
+  });
+
+  it('says whether the call can hear Ola, and why not', async () => {
+    const env = fakeSession();
+    const { ui } = await mount(env.session);
+    fireEvent.click(ui.getByRole('switch', { name: 'Ola' }));
+    fireEvent.click(await ui.findByRole('button', { name: 'Expand Ola' }));
+    expect(await ui.findByText(/Call audio connected/)).toBeTruthy();
+
+    await act(async () => env.voice.emitChannel({ hasChannel: false, micMuted: false }));
+    expect(await ui.findByText(/Not connected to the call/)).toBeTruthy();
+    expect(ui.queryByText(/Call audio connected/)).toBeNull();
+  });
+
+  it('tells the signer whether the last sentence reached the call', async () => {
+    const env = fakeSession();
+    const { ui } = await mount(env.session);
+    fireEvent.click(ui.getByRole('switch', { name: 'Ola' }));
+    fireEvent.click(await ui.findByRole('button', { name: 'Expand Ola' }));
+    expect(await ui.findByText(/Call audio connected/)).toBeTruthy();
+
+    await act(async () => env.voice.emitDelivery(true));
+    expect(await ui.findByText(/your last sentence reached the call/)).toBeTruthy();
+
+    await act(async () => env.voice.emitDelivery(false));
+    expect(await ui.findByText(/Ola’s voice didn’t reach the call/)).toBeTruthy();
+    expect(ui.queryByText(/your last sentence reached the call/)).toBeNull();
+  });
+
+  it('shows which recognition model is answering under About', async () => {
+    const { ui, session } = await mount();
+    await act(async () => session.dispatch({ type: 'MODEL_ID', modelId: 'tuned:1234567890' }));
+    fireEvent.click(ui.getByRole('button', { name: 'Expand Ola' }));
+    fireEvent.click(ui.getByRole('button', { name: 'Settings' }));
+    const drawer = await ui.findByRole('dialog', { name: 'Settings' });
+    expect(within(drawer).getByText('tuned:1234567890')).toBeTruthy();
   });
 
   it('keeps the drawer open when clicking inside it and closes on Escape', async () => {
     const { ui } = await mount();
-    fireEvent.click(ui.getByRole('button', { name: 'Expand Audion' }));
+    fireEvent.click(ui.getByRole('button', { name: 'Expand Ola' }));
     fireEvent.click(ui.getByRole('button', { name: 'Settings' }));
     const drawer = await ui.findByRole('dialog', { name: 'Settings' });
 
@@ -169,7 +212,7 @@ describe('Audion in a Shadow root', () => {
 
   it('shows all 22 supported signs from the panel footer and from settings', async () => {
     const { ui } = await mount();
-    fireEvent.click(ui.getByRole('button', { name: 'Expand Audion' }));
+    fireEvent.click(ui.getByRole('button', { name: 'Expand Ola' }));
     fireEvent.click(ui.getByRole('button', { name: 'Supported signs' }));
     const sheet = await ui.findByRole('dialog', { name: 'Supported signs' });
     expect(within(sheet).getAllByRole('listitem')).toHaveLength(22);
@@ -188,7 +231,7 @@ describe('Audion in a Shadow root', () => {
     const { ui, settings, container } = await mount();
     await act(async () => settings.useStore.getState().update({ theme: 'light' }));
     expect(container.querySelector('.ap-layer')?.getAttribute('data-theme')).toBe('light');
-    expect(ui.getByRole('group', { name: 'Audion' })).toBeTruthy();
+    expect(ui.getByRole('group', { name: 'Ola' })).toBeTruthy();
   });
 });
 
@@ -198,8 +241,8 @@ describe('recognition UI', () => {
 
   async function on(session = fakeSession().session) {
     const app = await mount(session);
-    fireEvent.click(app.ui.getByRole('button', { name: 'Expand Audion' }));
-    fireEvent.click(app.ui.getByRole('switch', { name: 'Audion' }));
+    fireEvent.click(app.ui.getByRole('button', { name: 'Expand Ola' }));
+    fireEvent.click(app.ui.getByRole('switch', { name: 'Ola' }));
     await waitFor(() => expect(app.ui.getByRole('status').textContent).toBe('Ready'));
     return app;
   }
@@ -208,7 +251,7 @@ describe('recognition UI', () => {
     const { session, track } = fakeSession();
     const { ui } = await on(session);
     expect(session.getState().on).toBe(true);
-    fireEvent.click(ui.getByRole('switch', { name: 'Audion' }));
+    fireEvent.click(ui.getByRole('switch', { name: 'Ola' }));
     expect(track.stop).toHaveBeenCalled();
     expect(ui.getByRole('status').textContent).toBe('Off');
   });
@@ -225,6 +268,127 @@ describe('recognition UI', () => {
     const row = ui.getByRole('group', { name: 'Recognised signs' });
     expect(within(row).getByText('hello')).toBeTruthy();
     expect(within(row).getByText(/low confidence/)).toBeTruthy();
+  });
+
+  it('shows a red dot instead of repeating "Off" in the collapsed pill, and the status once Ola is on', async () => {
+    const { session } = fakeSession();
+    const { ui, shadow } = await mount(session);
+    const pill = () => shadow.querySelector('.ap-pill');
+    expect(pill()?.classList.contains('ap-pill--off')).toBe(true);
+    expect(pill()?.querySelector('.ap-pill__dot')).toBeTruthy();
+    // the toggle still says Off in words; the status stays available to screen readers
+    expect(ui.getByRole('status').textContent).toBe('Off');
+    fireEvent.click(ui.getByRole('switch', { name: 'Ola' }));
+    await waitFor(() => expect(ui.getByRole('status').textContent).toBe('Ready'));
+    expect(pill()?.classList.contains('ap-pill--off')).toBe(false);
+  });
+
+  it('keeps the card inside the element it is given (web demo call window), not the whole browser window', async () => {
+    const bounds = document.createElement('div');
+    Object.defineProperty(bounds, 'clientWidth', { value: 700 });
+    Object.defineProperty(bounds, 'clientHeight', { value: 400 });
+    const { session } = fakeSession();
+    const { ui, shadow } = await mount(session, { bounds });
+    fireEvent.click(ui.getByRole('button', { name: 'Expand Ola' }));
+    const card = await waitFor(() => {
+      const el = shadow.querySelector<HTMLElement>('.ap-card');
+      expect(el).toBeTruthy();
+      return el!;
+    });
+    // 400 px high window - 96 px of control bar clearance - 8 px margin; the window here is 900 px high.
+    expect(card.style.maxHeight).toBe('296px');
+  });
+
+  it('tells the signer to keep signing while signs wait for a sentence, then stops', async () => {
+    const { session } = fakeSession();
+    const { ui } = await on(session);
+    expect(ui.queryByText(/Keep signing to build a sentence/)).toBeNull();
+    await act(async () => {
+      session.dispatch({ type: 'CLIP_READY' });
+      session.dispatch(recognised('hello', 0.9));
+    });
+    expect(ui.getByText(/Keep signing to build a sentence/)).toBeTruthy();
+    await act(async () => {
+      session.dispatch({ type: 'COMPOSE_START' });
+    });
+    expect(ui.queryByText(/Keep signing to build a sentence/)).toBeNull();
+  });
+
+  it('meeting context is opt-in: off by default, with a plain note about the captions', async () => {
+    const { session } = fakeSession();
+    const { ui, settings } = await on(session);
+    await act(async () => {
+      fireEvent.click(ui.getByRole('button', { name: /Settings/i }));
+    });
+    const toggle = await ui.findByRole('switch', { name: 'Use the meeting to word sentences' });
+    expect(toggle.getAttribute('aria-checked')).toBe('false');
+    expect(ui.getByText(/never stored/)).toBeTruthy();
+    await act(async () => {
+      fireEvent.click(toggle);
+    });
+    expect(settings.useStore.getState().settings.meetingContext).toBe(true);
+  });
+
+  it('tells the session to follow the meeting only while the setting and Ola are both on', async () => {
+    const { session } = fakeSession();
+    const follow = vi.spyOn(session, 'setMeetingContext');
+    const { ui, settings } = await on(session);
+    expect(follow).toHaveBeenLastCalledWith(false); // Ola is on but the setting is off
+    await act(async () => settings.useStore.getState().update({ meetingContext: true }));
+    expect(follow).toHaveBeenLastCalledWith(true);
+    fireEvent.click(ui.getByRole('switch', { name: 'Ola' })); // Ola off
+    expect(follow).toHaveBeenLastCalledWith(false);
+  });
+
+  it('says what it is waiting for, then shows the meeting summary under the signs', async () => {
+    const { session } = fakeSession();
+    const { ui } = await on(session);
+    expect(ui.queryByText(/Meeting context/)).toBeNull();
+    await act(async () => {
+      session.dispatch({ type: 'CONTEXT', state: 'waiting', summary: null });
+    });
+    expect(ui.getByText(/turn on captions \(CC\) in Meet/)).toBeTruthy();
+    await act(async () => {
+      session.dispatch({
+        type: 'CONTEXT',
+        state: 'following',
+        summary: 'Planning the demo for Friday.',
+      });
+    });
+    expect(ui.queryByText(/turn on captions/)).toBeNull();
+    expect(ui.getByText(/Following the meeting:/).parentElement?.textContent).toContain(
+      'Planning the demo for Friday.',
+    );
+  });
+
+  it('lets the signer turn on the Gemini double-check, which is off by default', async () => {
+    const { session } = fakeSession();
+    const { ui, settings } = await on(session);
+    await act(async () => {
+      fireEvent.click(ui.getByRole('button', { name: /Settings/i }));
+    });
+    const toggle = await ui.findByRole('switch', { name: 'Have Gemini double-check signs' });
+    expect(toggle.getAttribute('aria-checked')).toBe('false');
+    await act(async () => {
+      fireEvent.click(toggle);
+    });
+    expect(settings.useStore.getState().settings.cloudCheck).toBe(true);
+  });
+
+  it('lets the signer choose how long Ola waits before making a sentence', async () => {
+    const { session } = fakeSession();
+    const { ui, settings } = await on(session);
+    await act(async () => {
+      fireEvent.click(ui.getByRole('button', { name: /Settings/i }));
+    });
+    const group = await ui.findByRole('radiogroup', { name: 'Sentence pause' });
+    expect(within(group).getByRole('radio', { name: 'Normal' }).getAttribute('data-state')).toBe(
+      'checked',
+    );
+    await act(async () => {
+      fireEvent.click(within(group).getByRole('radio', { name: 'Long' }));
+    });
+    expect(settings.useStore.getState().settings.pauseMs).toBe(4500);
   });
 
   it('asks "Did you mean …?" for a low-confidence sign; Yes confirms it', async () => {
@@ -309,7 +473,7 @@ describe('recognition UI', () => {
     const { session, track } = fakeSession({ getCamera });
     getCamera.mockResolvedValueOnce({ getTracks: () => [track] } as unknown as MediaStream);
     const { ui } = await mount(session);
-    fireEvent.click(ui.getByRole('switch', { name: 'Audion' }));
+    fireEvent.click(ui.getByRole('switch', { name: 'Ola' }));
     expect(await ui.findByText(/Chrome is blocking the camera/)).toBeTruthy(); // pill auto-expanded
 
     fireEvent.click(ui.getByRole('button', { name: 'Fix permissions' }));
@@ -328,8 +492,8 @@ describe('speaking, captions and the end-of-call summary', () => {
 
   async function onWith(env = fakeSession()) {
     const app = await mount(env.session);
-    fireEvent.click(app.ui.getByRole('button', { name: 'Expand Audion' }));
-    fireEvent.click(app.ui.getByRole('switch', { name: 'Audion' }));
+    fireEvent.click(app.ui.getByRole('button', { name: 'Expand Ola' }));
+    fireEvent.click(app.ui.getByRole('switch', { name: 'Ola' }));
     await waitFor(() => expect(app.container.querySelector('.au-pill')?.textContent).toBe('Ready'));
     return { ...app, env };
   }
@@ -341,7 +505,8 @@ describe('speaking, captions and the end-of-call summary', () => {
 
   it('Speak is disabled with nothing to say; with signs it speaks into the call and shows the caption', async () => {
     const env = fakeSession();
-    const { ui } = await onWith(env);
+    const { ui, settings } = await onWith(env);
+    await act(async () => settings.useStore.getState().update({ speakMode: 'confirm' })); // Speak and Cancel only show in this mode
     expect((ui.getByRole('button', { name: 'Speak' }) as HTMLButtonElement).disabled).toBe(true);
     expect((ui.getByRole('button', { name: 'Cancel' }) as HTMLButtonElement).disabled).toBe(true);
 
@@ -350,9 +515,19 @@ describe('speaking, captions and the end-of-call summary', () => {
     expect(speak.disabled).toBe(false);
     await act(async () => fireEvent.click(speak));
     await waitFor(() => expect(env.voice.spoken).toHaveLength(1));
-    const caption = await ui.findByRole('status', { name: 'Audion caption' });
+    const caption = await ui.findByRole('status', { name: 'Ola caption' });
     expect(caption.textContent).toContain('Hello, please wait.');
     expect(caption.textContent).toContain('You'); // default signer name
+  });
+
+  it('auto-speak mode has no Speak or Cancel buttons; the hint does not mention Speak', async () => {
+    const env = fakeSession();
+    const { ui } = await onWith(env);
+    expect(ui.queryByRole('button', { name: 'Speak' })).toBeNull();
+    expect(ui.queryByRole('button', { name: 'Cancel' })).toBeNull();
+    await withChip(env.session);
+    const hint = ui.getByText(/Keep signing to build a sentence/);
+    expect(hint.textContent).not.toMatch(/press Speak/);
   });
 
   it('confirm-first shows the sentence in the panel with Speak and Cancel', async () => {
@@ -364,9 +539,11 @@ describe('speaking, captions and the end-of-call summary', () => {
         voiceId: 'aria',
         speed: 1,
         postToChat: false,
+        monitorVoice: true,
       }),
     });
-    const { ui } = await onWith(env);
+    const { ui, settings } = await onWith(env);
+    await act(async () => settings.useStore.getState().update({ speakMode: 'confirm' }));
     await withChip(env.session);
     await act(async () => {
       env.session.dispatch({ type: 'COMPOSE_START' });
@@ -393,7 +570,7 @@ describe('speaking, captions and the end-of-call summary', () => {
       env.session.dispatch({ type: 'COMPOSED', sentence: 'Please wait.' });
       env.session.dispatch({ type: 'SPEAK_START' });
     });
-    const caption = await ui.findByRole('status', { name: 'Audion caption' });
+    const caption = await ui.findByRole('status', { name: 'Ola caption' });
     expect(caption.textContent).toContain('Alex');
     expect(caption.style.fontSize).toBe('26px');
     expect(caption.style.top).toBe('16px');

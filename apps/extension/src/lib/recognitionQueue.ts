@@ -4,6 +4,11 @@ export interface ClipJob {
   clip: Blob;
   mime: string;
   durationMs: number;
+  /**
+   * Set when the device already named this sign (chip id): the cloud's answer only checks it, and the clip was never
+   * counted as waiting for an answer.
+   */
+  verifyFor?: number;
 }
 
 type Recognised = Extract<
@@ -13,9 +18,9 @@ type Recognised = Extract<
 
 export interface QueueOptions {
   recognize(job: ClipJob): Promise<Recognised | Failure>;
-  onResult(res: Recognised): void;
+  onResult(res: Recognised, job: ClipJob): void;
   /** A clip was dropped for good (non-retryable error, or the queue was full). */
-  onDropped(): void;
+  onDropped(error: Failure['error'] | undefined, job: ClipJob): void;
   onOnline(online: boolean): void;
   maxQueued?: number;
   baseRetryMs?: number;
@@ -55,7 +60,7 @@ export function createRecognitionQueue(opts: QueueOptions) {
             offline = false;
             opts.onOnline(true);
           }
-          opts.onResult(res);
+          opts.onResult(res, job);
         } else if (res.error.retryable) {
           if (!offline) {
             offline = true;
@@ -70,7 +75,7 @@ export function createRecognitionQueue(opts: QueueOptions) {
         } else {
           jobs.shift();
           attempts = 0;
-          opts.onDropped();
+          opts.onDropped(res.error, job);
         }
       }
     } finally {

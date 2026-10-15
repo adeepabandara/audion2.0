@@ -16,6 +16,7 @@ import {
   EDGE_MARGIN,
   FALLBACK_BAR_CLEARANCE,
   type Position,
+  type Size,
 } from './position';
 import type { AudionSession } from './session';
 import { getPanelStore } from './store';
@@ -23,6 +24,34 @@ import { useDrag } from './useDrag';
 import { useSessionState } from './useSession';
 
 const CARD_FALLBACK = { width: 336, height: 480 };
+
+/**
+ * The area the panel lives in. In a Meet tab that is the whole browser window; in the web demo it is the simulated
+ * call window (`bounds`), so the panel stays inside it, scrolls with it and can be dragged only within it.
+ */
+function useViewport(bounds?: HTMLElement | null): Size {
+  const read = useCallback(
+    (): Size =>
+      bounds
+        ? { width: bounds.clientWidth || innerWidth, height: bounds.clientHeight || innerHeight }
+        : { width: innerWidth, height: innerHeight },
+    [bounds],
+  );
+  const [size, setSize] = useState(read);
+  useEffect(() => {
+    const update = () => setSize(read());
+    update();
+    addEventListener('resize', update);
+    const observer =
+      bounds && typeof ResizeObserver !== 'undefined' ? new ResizeObserver(update) : null;
+    if (bounds) observer?.observe(bounds);
+    return () => {
+      removeEventListener('resize', update);
+      observer?.disconnect();
+    };
+  }, [bounds, read]);
+  return size;
+}
 
 /** Clearance above Meet's control bar, re-measured on resize and every 1.5 s (Meet re-renders its bar freely). */
 function useBarClearance(): number {
@@ -62,6 +91,10 @@ export interface AudionAppProps {
   alwaysShow?: boolean;
   /** Injectable for tests; defaults to the app-wide store. */
   panelStore?: ReturnType<typeof getPanelStore>;
+  /** The public web demo (no Meet call): see PanelCard. */
+  demo?: boolean;
+  /** Keep the panel inside this element (web demo: the call window) instead of the whole browser window. */
+  bounds?: HTMLElement | null;
 }
 
 export function AudionApp({
@@ -69,17 +102,30 @@ export function AudionApp({
   portalContainer,
   alwaysShow = false,
   panelStore = getPanelStore(),
+  demo = false,
+  bounds = null,
 }: AudionAppProps) {
   const settings = getSettingsStore();
   const usePanel = panelStore.useStore;
-  const { theme, displayName, captionSize, captionPosition, feedbackConsent } = settings.useStore(
-    (s) => s.settings,
-  );
+  const {
+    theme,
+    displayName,
+    captionSize,
+    captionPosition,
+    feedbackConsent,
+    speakMode,
+    meetingContext,
+  } = settings.useStore((s) => s.settings);
   const { expanded, position, drawer, ready, voiceMuted } = usePanel();
   const { setExpanded, setPosition, setVoiceMuted, openDrawer, closeDrawer } = usePanel.getState();
   const [summary, setSummary] = useState<TranscriptEntry[] | null>(null);
   const machine = useSessionState(session);
   const view = viewOf(machine);
+
+  // Follow the meeting's captions only while the opt-in setting is on and Ola is on (and forget them otherwise).
+  useEffect(() => {
+    session.setMeetingContext(meetingContext && machine.on);
+  }, [session, meetingContext, machine.on]);
 
   useEffect(() => {
     void settings.init();
@@ -121,17 +167,14 @@ export function AudionApp({
 
   const base: Position = position ?? { right: 16, bottom: clearance };
   const [live, setLive] = useState<Position | null>(null); // position while dragging
-  const shown = clampPosition(
-    live ?? base,
-    size(),
-    { width: innerWidth, height: innerHeight },
-    clearance,
-  );
+  const viewport = useViewport(bounds);
+  const shown = clampPosition(live ?? base, size(), viewport, clearance);
 
   const drag = useDrag({
     position: shown,
     size,
     minBottom: clearance,
+    viewport: () => viewport,
     onMove: setLive,
     onCommit: (p) => {
       setPosition(p);
@@ -183,11 +226,13 @@ export function AudionApp({
               onCollapse={() => setExpanded(false)}
               onOpenSettings={() => openDrawer('settings')}
               onOpenSigns={() => openDrawer('signs')}
+              demo={demo}
+              showActions={speakMode === 'confirm'}
               style={{
                 right: shown.right,
                 bottom: shown.bottom,
                 // Never taller than the space above the control bar: scroll inside instead.
-                maxHeight: Math.max(200, innerHeight - shown.bottom - EDGE_MARGIN),
+                maxHeight: Math.max(200, viewport.height - shown.bottom - EDGE_MARGIN),
               }}
               dragHandlers={drag}
             />
@@ -215,6 +260,7 @@ export function AudionApp({
             open={drawer === 'settings'}
             onOpenChange={(o) => (o ? openDrawer('settings') : closeDrawer())}
             onShowSigns={() => openDrawer('signs')}
+            modelId={machine.modelId}
           />
           <SignsSheet
             open={drawer === 'signs'}

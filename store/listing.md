@@ -4,7 +4,7 @@ Everything here is ready to paste into the Web Store developer dashboard. Fill t
 
 ## Basics
 
-- **Name:** Audion
+- **Name:** Ola by Audion
 - **Category:** Accessibility
 - **Language:** English
 - **Summary (max 132 characters):** Sign to your camera in Google Meet. Audion turns your signs into captions and a spoken voice in the call.

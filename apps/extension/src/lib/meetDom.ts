@@ -180,3 +180,56 @@ export function watchLeaveCall(cb: () => void, doc: Document = document): () => 
   doc.addEventListener('click', onClick, true); // capture: Meet may stop propagation
   return () => doc.removeEventListener('click', onClick, true);
 }
+
+// ---- Live captions -------------------------------------------------------------------------------------------
+
+/** Text Meet puts inside its caption area that is interface, not speech. */
+const CAPTION_CHROME = /^(captions?|jump to bottom|live captions?|turn off captions?)$/i;
+
+/**
+ * Meet's live-caption area (the signer must have captions switched on in Meet: the CC button). Found by its ARIA
+ * label, which Meet needs for accessibility and which changes rarely. Null when captions are off or the markup moved.
+ */
+export function findCaptionRegion(doc: Document = document): Element | null {
+  return (
+    doc.querySelector('[role="region"][aria-label*="aption" i]') ??
+    doc.querySelector('[aria-label="Captions" i]') ??
+    null
+  );
+}
+
+/**
+ * The caption text on screen right now, one string per line (speaker names and their words). Read from the text of
+ * the innermost elements, so it does not depend on how Meet lays the blocks out.
+ */
+export function readCaptionLines(doc: Document = document): string[] {
+  const region = findCaptionRegion(doc);
+  if (!region) return [];
+  const leaves = [...region.querySelectorAll('*')].filter(
+    (el) => el.children.length === 0 && (el.textContent ?? '').trim(),
+  );
+  const raw = leaves.length ? leaves.map((el) => el.textContent ?? '') : [region.textContent ?? ''];
+  return raw.map((l) => l.replace(/\s+/g, ' ').trim()).filter((l) => l && !CAPTION_CHROME.test(l));
+}
+
+/**
+ * Calls `cb` with the captions on screen whenever they change (checked a few times a second, and only when the
+ * caption area exists). Meet shows only the last few lines, so callers get overlapping snapshots and must de-duplicate.
+ * Returns an unsubscribe function. Nothing is stored here.
+ */
+export function watchCaptions(
+  cb: (lines: string[]) => void,
+  doc: Document = document,
+  everyMs = 700,
+): () => void {
+  let last = '';
+  const id = setInterval(() => {
+    const lines = readCaptionLines(doc);
+    const key = lines.join('\n');
+    if (lines.length && key !== last) {
+      last = key;
+      cb(lines);
+    }
+  }, everyMs);
+  return () => clearInterval(id);
+}

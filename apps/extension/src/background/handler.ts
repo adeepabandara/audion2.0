@@ -47,7 +47,16 @@ export function createMessageHandler(
           req.durationMs,
         );
       case 'api/compose':
-        return api.compose({ signs: req.signs, tone: req.tone });
+        return api.compose({
+          signs: req.signs,
+          tone: req.tone,
+          ...(req.context ? { context: req.context } : {}),
+        });
+      case 'api/context':
+        return api.context({
+          transcript: req.transcript,
+          ...(req.previous ? { previous: req.previous } : {}),
+        });
       case 'api/feedback':
         return api.feedback({ rating: req.rating, signs: req.signs });
       case 'transcript/add': {

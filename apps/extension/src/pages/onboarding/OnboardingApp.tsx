@@ -1,7 +1,8 @@
 import { ThemeRoot } from '@audion/ui';
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { getSettingsStore } from '../../lib/settings';
 import { Done } from './Done';
+import { Intro } from './Intro';
 import { Permissions } from './Permissions';
 import { Setup } from './Setup';
 import { Welcome } from './Welcome';
@@ -14,12 +15,21 @@ function routeFromHash(): Route {
   return (ROUTES as readonly string[]).includes(h) ? (h as Route) : 'welcome';
 }
 
-export function OnboardingApp() {
+const prefersReducedMotion = () =>
+  typeof window.matchMedia === 'function' &&
+  window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+/** `intro`: show the 3-second logo intro when the page loads on the welcome step (not for reduced motion). */
+export function OnboardingApp({ intro = false }: { intro?: boolean }) {
   const { useStore, init } = getSettingsStore();
   const theme = useStore((s) => s.settings.theme);
   const ready = useStore((s) => s.ready);
   const update = useStore((s) => s.update);
   const [route, setRoute] = useState<Route>(routeFromHash);
+  const [showIntro, setShowIntro] = useState(
+    () => intro && routeFromHash() === 'welcome' && !prefersReducedMotion(),
+  );
+  const endIntro = useCallback(() => setShowIntro(false), []);
 
   useEffect(() => {
     const unsub = init();
@@ -37,6 +47,12 @@ export function OnboardingApp() {
   };
 
   if (!ready) return <ThemeRoot theme={theme} />;
+  if (showIntro)
+    return (
+      <ThemeRoot theme={theme}>
+        <Intro onDone={endIntro} />
+      </ThemeRoot>
+    );
   return (
     <ThemeRoot theme={theme}>
       {route === 'welcome' && <Welcome onStart={() => go('permissions')} />}

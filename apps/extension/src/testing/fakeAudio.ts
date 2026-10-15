@@ -60,6 +60,7 @@ export function makeFakeContext() {
   const analyserData = { fill: 128 };
   const ctx = {
     state: 'running',
+    destination: new Node('speakers', edges),
     closed: false,
     resumed: 0,
     decoded: [] as ArrayBuffer[],
@@ -83,8 +84,8 @@ export function makeFakeContext() {
       return new Node('micSource', edges);
     },
     createGain(): GainLike {
-      // Gains are created in a fixed order by Mixer: bus, micGain, voiceGain.
-      const name = ['bus', 'micGain', 'voiceGain'][gainN++] ?? `gain${gainN}`;
+      // Gains are created in a fixed order by Mixer: bus, micGain, voiceGain; then one monitorGain per monitored play.
+      const name = ['bus', 'micGain', 'voiceGain', 'monitorGain'][gainN++] ?? `monitorGain${gainN}`;
       const node = new Node(name, edges) as unknown as GainLike;
       node.gain = gains[name] = { value: 1 };
       return node;

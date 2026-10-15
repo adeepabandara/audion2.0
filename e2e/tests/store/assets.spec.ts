@@ -34,7 +34,7 @@ const HAND = [
 async function ready(page: Page) {
   await page.setViewportSize({ width: 1280, height: 800 });
   await page.goto(FAKE_MEET);
-  await expect(page.getByRole('group', { name: 'Audion' })).toBeVisible();
+  await expect(page.getByRole('group', { name: 'Ola' })).toBeVisible();
   await page.mouse.move(0, 0);
 }
 const on = async (page: Page) => {
@@ -60,8 +60,8 @@ const sign = async (page: Page, s: string, confidence = 0.92) => {
   await dispatch(page, { type: 'RECOGNISED', sign: s, confidence, threshold: 0.5 });
 };
 const expand = async (page: Page) => {
-  await page.getByRole('button', { name: 'Expand Audion' }).click();
-  await expect(page.getByRole('region', { name: 'Audion panel' })).toBeVisible();
+  await page.getByRole('button', { name: 'Expand Ola' }).click();
+  await expect(page.getByRole('region', { name: 'Ola panel' })).toBeVisible();
 };
 const shot = (page: Page, name: string) =>
   page.screenshot({ path: `${OUT}/screenshots/${name}.png` });
@@ -85,7 +85,7 @@ test.describe('Chrome Web Store screenshots (1280x800)', () => {
     await dispatch(page, { type: 'COMPOSE_START' });
     await dispatch(page, { type: 'COMPOSED', sentence: 'Please wait, I’ll talk tomorrow.' });
     await dispatch(page, { type: 'SPEAK_START' });
-    await expect(page.getByRole('status', { name: 'Audion caption' })).toBeVisible();
+    await expect(page.getByRole('status', { name: 'Ola caption' })).toBeVisible();
     await shot(page, '2-captions');
   });
 
@@ -133,7 +133,7 @@ const tile = (
   p{font-size:${sub}px;color:#d7f5ef}
 </style>
 <main>
-  <div class="mark"><svg width="${Math.round(headline * 1.1)}" height="${Math.round(headline * 1.1)}" viewBox="0 0 32 32"><rect width="32" height="32" rx="9" fill="#fff"/><circle cx="10" cy="16" r="3.2" fill="#0f766e"/><path d="M16 10.5a7.5 7.5 0 010 11M20.5 7a12.5 12.5 0 010 18" fill="none" stroke="#0f766e" stroke-width="2.4" stroke-linecap="round"/></svg>Audion</div>
+  <div class="mark"><svg width="${Math.round(headline * 1.1)}" height="${Math.round(headline * 1.1)}" viewBox="0 0 32 32"><rect width="32" height="32" rx="9" fill="#fff"/><circle cx="10" cy="16" r="3.2" fill="#0f766e"/><path d="M16 10.5a7.5 7.5 0 010 11M20.5 7a12.5 12.5 0 010 18" fill="none" stroke="#0f766e" stroke-width="2.4" stroke-linecap="round"/></svg>Ola by Audion</div>
   <h1>Sign. Be heard in any Google Meet call.</h1>
   <p>Your video is processed to recognize signs and never stored.</p>
 </main>`;

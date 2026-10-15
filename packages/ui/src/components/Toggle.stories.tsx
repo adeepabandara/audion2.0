@@ -6,7 +6,7 @@ import { Toggle } from './Toggle';
 const meta = {
   title: 'Components/Toggle',
   component: Toggle,
-  args: { label: 'Audion', checked: false },
+  args: { label: 'Ola', checked: false },
 } satisfies Meta<typeof Toggle>;
 export default meta;
 type Story = StoryObj<typeof meta>;
@@ -17,7 +17,7 @@ export const Off: Story = {
     return <Toggle {...args} checked={on} onCheckedChange={setOn} />;
   },
   play: async ({ canvasElement }) => {
-    const sw = within(canvasElement).getByRole('switch', { name: 'Audion' });
+    const sw = within(canvasElement).getByRole('switch', { name: 'Ola' });
     await userEvent.click(sw);
     await expect(sw).toBeChecked();
   },

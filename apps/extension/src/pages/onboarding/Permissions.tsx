@@ -44,14 +44,14 @@ export function Permissions({ onBack, onNext }: { onBack(): void; onNext(): void
     {
       kind: 'camera',
       title: 'Camera',
-      desc: 'Lets Audion see your signs. Video stays on your device except short clips sent to recognize one sign.',
+      desc: 'Lets Ola see your signs. Video stays on your device except short clips sent to recognize one sign.',
       icon: 'camera',
       state: camera,
     },
     {
       kind: 'microphone',
       title: 'Microphone channel',
-      desc: 'Carries Audion’s voice into the call alongside your own microphone, so everyone hears you.',
+      desc: 'Carries Ola’s voice into the call alongside your own microphone, so everyone hears you.',
       icon: 'mic',
       state: mic,
     },
@@ -67,7 +67,7 @@ export function Permissions({ onBack, onNext }: { onBack(): void; onNext(): void
       </div>
       <h1>Allow camera and microphone</h1>
       <p>
-        Audion needs both to work in a call. Chrome may ask once more on Google Meet itself, because
+        Ola needs both to work in a call. Chrome may ask once more on Google Meet itself, because
         Meet is a different site.
       </p>
       <div className="ob__rows">
