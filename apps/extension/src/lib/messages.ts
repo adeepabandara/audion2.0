@@ -1,4 +1,9 @@
-import type { ComposeResponse, ErrorCode, RecognizeResponse } from '@audion/shared';
+import type {
+  ComposeResponse,
+  ContextResponse,
+  ErrorCode,
+  RecognizeResponse,
+} from '@audion/shared';
 
 /** Messages from extension pages / content scripts to the service worker. Binary data travels as base64. */
 export type Request =
@@ -6,7 +11,8 @@ export type Request =
   | { type: 'ui/openCameraSettings' }
   | { type: 'api/speak'; text: string; voiceId: string; speed: number }
   | { type: 'api/recognize'; clipBase64: string; mime: string; durationMs: number }
-  | { type: 'api/compose'; signs: string[]; tone?: 'neutral' | 'polite' }
+  | { type: 'api/compose'; signs: string[]; tone?: 'neutral' | 'polite'; context?: string }
+  | { type: 'api/context'; transcript: string; previous?: string }
   | { type: 'api/feedback'; rating: 'up' | 'down'; signs: string[] }
   | { type: 'transcript/add'; text: string }
   | { type: 'transcript/get' }
@@ -32,14 +38,24 @@ export type ResponseFor<R extends Request> = R extends {
     : R extends { type: 'api/feedback' }
       ? { ok: true } | Failure
       : R extends { type: 'api/health' }
-        ? { ok: true; mode: 'live' | 'mock'; confidenceThreshold?: number } | Failure
+        ?
+            | {
+                ok: true;
+                mode: 'live' | 'mock';
+                confidenceThreshold?: number;
+                modelId?: string;
+                voices?: 'google' | 'mock';
+              }
+            | Failure
         : R extends { type: 'api/speak' }
           ? { ok: true; audioBase64: string; contentType: string } | Failure
           : R extends { type: 'api/recognize' }
             ? ({ ok: true } & RecognizeResponse) | Failure
             : R extends { type: 'api/compose' }
               ? ({ ok: true } & ComposeResponse) | Failure
-              : never;
+              : R extends { type: 'api/context' }
+                ? ({ ok: true } & ContextResponse) | Failure
+                : never;
 
 export function toBase64(bytes: ArrayBuffer | Uint8Array): string {
   const u8 = bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes);

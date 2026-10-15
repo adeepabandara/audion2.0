@@ -1,7 +1,7 @@
 import type { Page } from '@playwright/test';
 import { FAKE_MEET, dispatch, expect, state, test, waitForState } from '../../helpers/ext';
 
-/** The element Audion's UI currently has focused (it lives in a Shadow root). */
+/** The element Ola's UI currently has focused (it lives in a Shadow root). */
 const focused = (page: Page) =>
   page.evaluate(() => {
     const root = document.querySelector('audion-root')!.shadowRoot!;
@@ -33,9 +33,9 @@ test('the whole panel can be used with the keyboard alone, with visible focus', 
   page,
 }) => {
   await page.goto(FAKE_MEET);
-  await page.getByRole('group', { name: 'Audion' }).getByRole('switch').focus();
+  await page.getByRole('group', { name: 'Ola' }).getByRole('switch').focus();
 
-  // Space switches Audion On (focus ring visible on the control).
+  // Space switches Ola On (focus ring visible on the control).
   let f = (await focused(page))!;
   expect(f.role).toBe('switch');
   expect(f.outline).not.toMatch(/^none/);
@@ -43,13 +43,13 @@ test('the whole panel can be used with the keyboard alone, with visible focus', 
   await waitForState(page, (s) => s.on && s.phase === 'ready');
 
   // Tab to Expand, Enter opens the card.
-  await tabTo(page, /Expand Audion/);
+  await tabTo(page, /Expand Ola/);
   await press(page, 'Enter');
-  await expect(page.getByRole('region', { name: 'Audion panel' })).toBeVisible();
+  await expect(page.getByRole('region', { name: 'Ola panel' })).toBeVisible();
 
   // The drag handle moves the panel with arrow keys.
-  await tabTo(page, /Move Audion panel/);
-  const card = page.getByRole('region', { name: 'Audion panel' });
+  await tabTo(page, /Move Ola panel/);
+  const card = page.getByRole('region', { name: 'Ola panel' });
   const before = (await card.boundingBox())!;
   await press(page, 'ArrowUp', 3);
   const after = (await card.boundingBox())!;

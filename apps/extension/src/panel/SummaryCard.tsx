@@ -19,7 +19,7 @@ export interface SummaryCardProps {
   style?: React.CSSProperties;
 }
 
-/** Shown when the call ends: everything Audion spoke, with timestamps. Held in memory; cleared on close. */
+/** Shown when the call ends: everything Ola spoke, with timestamps. Held in memory; cleared on close. */
 export function SummaryCard({
   entries,
   feedbackConsent,
@@ -40,7 +40,7 @@ export function SummaryCard({
       style={style}
     >
       <p className="ap-note">
-        What Audion said for you in this call. It is kept in memory only and cleared when you close
+        What Ola said for you in this call. It is kept in memory only and cleared when you close
         this.
       </p>
       <ol className="ap-transcript">

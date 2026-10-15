@@ -6,6 +6,13 @@ export interface HandTracker {
   start(): Promise<void>;
   /** One frame in, landmarks out. Null if the tracker is busy or stopped. */
   detect(video: HTMLVideoElement): Promise<LandmarkFrame | null>;
+  /** Name a finished sign on this device (optional; absent in tests and when the model is missing). */
+  classify?(
+    frames: LandmarkFrame[],
+    startT: number,
+    endT: number,
+    aspect: number,
+  ): Promise<{ sign: string; confidence: number; threshold: number } | null>;
   stop(): void;
 }
 
@@ -22,6 +29,10 @@ export class IframeTracker implements HandTracker {
   private onMessage: ((e: MessageEvent) => void) | null = null;
   private readyWaiters: Array<{ resolve(): void; reject(e: Error): void }> = [];
   private ready = false;
+  private classifying = new Map<
+    number,
+    (r: Extract<FromTracker, { type: 'classified' }>['result']) => void
+  >();
 
   constructor(
     private readonly url: string,
@@ -67,6 +78,8 @@ export class IframeTracker implements HandTracker {
       this.readyWaiters.splice(0).forEach((w) => w.resolve());
     } else if (msg.type === 'error') {
       this.readyWaiters.splice(0).forEach((w) => w.reject(new Error(msg.message)));
+    } else if (msg.type === 'classified') {
+      this.classifying.get(msg.id)?.(msg.result);
     } else if (msg.type === 'landmarks' && this.inFlight?.id === msg.id) {
       const { resolve } = this.inFlight;
       this.inFlight = null;
@@ -98,7 +111,24 @@ export class IframeTracker implements HandTracker {
     });
   }
 
+  classify(frames: LandmarkFrame[], startT: number, endT: number, aspect: number) {
+    if (!this.ready) return Promise.resolve(null);
+    const id = this.nextId++;
+    return new Promise<Extract<FromTracker, { type: 'classified' }>['result']>((resolve) => {
+      const done = (r: Extract<FromTracker, { type: 'classified' }>['result']) => {
+        clearTimeout(timer);
+        this.classifying.delete(id);
+        resolve(r);
+      };
+      // A slow answer is worth nothing: the cloud will answer anyway.
+      const timer = setTimeout(() => done(null), 1500);
+      this.classifying.set(id, done);
+      this.post({ source: TRACKER_SOURCE, type: 'classify', id, frames, startT, endT, aspect });
+    });
+  }
+
   stop(): void {
+    this.classifying.forEach((done) => done(null));
     this.inFlight?.resolve(null);
     this.inFlight = null;
     if (this.onMessage) window.removeEventListener('message', this.onMessage);

@@ -4,6 +4,7 @@ import type { VoiceChannel } from '../lib/voiceBridge';
 import { AudionSession, type SessionDeps } from '../panel/session';
 
 export function fakeVoice(result: SpeakResult = 'done') {
+  const deliveryCbs = new Set<(sent: boolean | null) => void>();
   const channelCbs = new Set<(s: { hasChannel: boolean; micMuted: boolean }) => void>();
   const voice = {
     result,
@@ -20,6 +21,11 @@ export function fakeVoice(result: SpeakResult = 'done') {
     },
     emitChannel: (s: { hasChannel: boolean; micMuted: boolean }) =>
       channelCbs.forEach((cb) => cb(s)),
+    onDelivery: (cb: (sent: boolean | null) => void) => {
+      deliveryCbs.add(cb);
+      return () => deliveryCbs.delete(cb);
+    },
+    emitDelivery: (sent: boolean | null) => deliveryCbs.forEach((cb) => cb(sent)),
     probe: async () => ({ hasChannel: true, micMuted: false, peak: 0 }),
     dispose: () => {},
   };
@@ -83,8 +89,10 @@ export function fakeSession(
       voiceId: 'aria',
       speed: 1,
       postToChat: false,
+      monitorVoice: true,
     }),
     voice,
+    playLocal: vi.fn(async () => {}),
     chat,
     luminance: () => 120,
     now: () => 0,

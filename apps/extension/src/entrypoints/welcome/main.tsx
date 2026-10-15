@@ -6,6 +6,6 @@ import '../../pages/onboarding/onboarding.css';
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
-    <OnboardingApp />
+    <OnboardingApp intro />
   </StrictMode>,
 );

@@ -27,6 +27,91 @@
   padding: 6px 8px 6px 10px;
   border-radius: 999px;
 }
+/* Off: the status capsule holds a red dot. On: the dot gives way and the status grows in, the pill widening smoothly.
+   Not colour alone: the toggle says Off/On. */
+.ap-pill__chip {
+  display: inline-flex;
+  align-items: center;
+  min-height: 32px;
+  padding: 0 11px;
+  border-radius: 999px;
+  background: var(--au-raised);
+  border: 1px solid var(--au-divider);
+  transition:
+    padding 0.25s ease,
+    background-color 0.25s ease,
+    border-color 0.25s ease;
+}
+/* Once on, the status pill inside draws its own capsule, so this one steps aside. */
+.ap-pill:not(.ap-pill--off) .ap-pill__chip {
+  padding: 0;
+  background: transparent;
+  border-color: transparent;
+}
+.ap-pill__dot {
+  flex: none;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: #dc2626;
+  box-shadow: 0 0 0 3px rgb(220 38 38 / 25%);
+  transition:
+    width 0.25s ease,
+    opacity 0.2s ease,
+    box-shadow 0.25s ease;
+}
+.ap-pill:not(.ap-pill--off) .ap-pill__dot {
+  width: 0;
+  opacity: 0;
+  box-shadow: none;
+}
+.ap-pill__status {
+  display: grid;
+  grid-template-columns: 1fr;
+  opacity: 1;
+  transition:
+    grid-template-columns 0.3s ease,
+    opacity 0.25s ease;
+}
+.ap-pill__status-inner {
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+}
+/* A steady width for the status chip, so the pill only resizes (smoothly) when Ola is turned on or off, and does not
+   jump each time the status text changes ("Starting camera" -> "Ready" -> "Seeing you"). */
+.ap-pill__status .au-pill {
+  min-width: 10rem;
+}
+.ap-pill--off .ap-pill__status {
+  grid-template-columns: 0fr;
+  opacity: 0;
+}
+/* A little life when the widget appears or opens. */
+@keyframes ap-appear {
+  from {
+    opacity: 0;
+    transform: translateY(8px) scale(0.97);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+.ap-pill,
+.ap-card {
+  animation: ap-appear 0.2s ease-out;
+}
+@media (prefers-reduced-motion: reduce) {
+  .ap-pill,
+  .ap-card,
+  .ap-pill__chip,
+  .ap-pill__dot,
+  .ap-pill__status {
+    animation: none;
+    transition: none;
+  }
+}
 .ap-card {
   width: 336px; /* ~320 of content once a scrollbar appears on short windows */
   overflow-x: hidden;
@@ -185,6 +270,10 @@
   object-fit: cover;
   transform: scaleX(-1);
 }
+/* A video file (web demo test) is shown as it is, not flipped like a mirror. */
+.ap-unmirrored .ap-preview__video {
+  transform: none;
+}
 .ap-guide {
   color: rgb(255 255 255 / 75%);
   pointer-events: none;
@@ -255,4 +344,16 @@
   display: flex;
   align-items: center;
   gap: 8px;
+}
+
+.ap-chip-note {
+  font-size: 0.75em;
+  font-weight: 400;
+}
+/* The meeting summary under the signs: three lines at most, the rest is in the sentence's wording. */
+.ap-context {
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
 }

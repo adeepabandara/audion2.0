@@ -1,5 +1,12 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { isMeetCallPath, locateControlBar, type Rect } from './meetDom';
+import {
+  findCaptionRegion,
+  isMeetCallPath,
+  locateControlBar,
+  readCaptionLines,
+  watchCaptions,
+  type Rect,
+} from './meetDom';
 
 const VIEW = { width: 1440, height: 900 };
 const rect = (top: number, height: number, left = 0, width = 1440): Rect => ({
@@ -160,5 +167,45 @@ describe('watchLeaveCall', () => {
     off();
     document.getElementById('icon')!.click();
     expect(cb).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('live captions', () => {
+  const page = (html: string) => {
+    document.body.innerHTML = html;
+    return document;
+  };
+
+  it('finds the caption area by its ARIA label and reads speaker names and words, without interface text', () => {
+    const doc = page(
+      '<div role="region" aria-label="Captions"><span>Captions</span><div><span>Priya</span><span>the demo is on Friday</span></div><button>Jump to bottom</button></div>',
+    );
+    expect(findCaptionRegion(doc)).not.toBeNull();
+    expect(readCaptionLines(doc)).toEqual(['Priya', 'the demo is on Friday']);
+  });
+
+  it('gives nothing when captions are off or the page has no caption area', () => {
+    const doc = page('<div role="region" aria-label="Chat"><span>hi</span></div>');
+    expect(findCaptionRegion(doc)).toBeNull();
+    expect(readCaptionLines(doc)).toEqual([]);
+  });
+
+  it('calls back with the lines when they change, and stops when unsubscribed', () => {
+    vi.useFakeTimers();
+    const doc = page(
+      '<div role="region" aria-label="Captions"><span>Marcus</span><span>hello</span></div>',
+    );
+    const seen: string[][] = [];
+    const stop = watchCaptions((l) => seen.push(l), doc, 100);
+    vi.advanceTimersByTime(250);
+    expect(seen).toEqual([['Marcus', 'hello']]); // only once: nothing changed after the first read
+    doc.querySelector('div span:last-child')!.textContent = 'hello everyone';
+    vi.advanceTimersByTime(150);
+    expect(seen.at(-1)).toEqual(['Marcus', 'hello everyone']);
+    stop();
+    doc.querySelector('div span:last-child')!.textContent = 'changed again';
+    vi.advanceTimersByTime(500);
+    expect(seen).toHaveLength(2);
+    vi.useRealTimers();
   });
 });

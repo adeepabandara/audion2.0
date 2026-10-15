@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { FakeStream, FakeTrack, makeFakeContext } from '../testing/fakeAudio';
 import { Mixer } from './audioMixer';
 
@@ -22,6 +22,46 @@ describe('Mixer routing', () => {
     );
     expect(mixer.hasMic).toBe(true);
     expect(mixer.stream.getAudioTracks()).toHaveLength(1);
+  });
+
+  it('plays Ola’s voice on this device’s speakers too, only when asked', async () => {
+    const quiet = makeFakeContext();
+    await new Mixer(quiet.ctx, mic()).play(bytes());
+    expect(quiet.edges.some(([, to]) => to === 'speakers')).toBe(false); // call only
+
+    const loud = makeFakeContext();
+    await new Mixer(loud.ctx, mic()).play(bytes(), { monitor: true });
+    expect(loud.edges).toEqual(
+      expect.arrayContaining([
+        ['voice', 'voiceGain'], // still goes into the call
+        ['voice', 'monitorGain'], // and to a local copy
+        ['monitorGain', 'speakers'],
+      ]),
+    );
+  });
+
+  it('never plays locally while Ola is off or its voice is muted', async () => {
+    const { ctx, edges } = makeFakeContext();
+    const mixer = new Mixer(ctx, mic());
+    mixer.configure({ enabled: false });
+    expect(await mixer.play(bytes(), { monitor: true })).toBe('disabled');
+    mixer.configure({ enabled: true, voiceMuted: true });
+    expect(await mixer.play(bytes(), { monitor: true })).toBe('muted');
+    expect(edges.some(([, to]) => to === 'speakers')).toBe(false);
+  });
+
+  it('can be disposed twice, and a failing close never becomes an unhandled error', async () => {
+    const { ctx } = makeFakeContext();
+    const close = vi.spyOn(ctx, 'close');
+    const mixer = new Mixer(ctx, mic());
+    mixer.dispose();
+    mixer.dispose(); // Meet can stop the same track twice
+    expect(close).toHaveBeenCalledTimes(1);
+
+    const bad = makeFakeContext();
+    bad.ctx.close = () => Promise.reject(new Error('Cannot close a closed AudioContext.'));
+    expect(() => new Mixer(bad.ctx, mic()).dispose()).not.toThrow();
+    await new Promise((r) => setTimeout(r, 0)); // an unhandled rejection would fail the run
   });
 
   it('still provides an audio track when there is no microphone', async () => {

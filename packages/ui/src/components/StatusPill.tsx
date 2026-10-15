@@ -23,12 +23,16 @@ export const STATUS_META: Record<Status, { icon: IconName; label: string; tone: 
   attention: { icon: 'alert', label: 'Needs attention', tone: 'warn' },
 };
 
-/** Icon + text status. Announced politely when it changes. */
+/** Icon + text status (a red dot while off). Announced politely when it changes. */
 export function StatusPill({ status, label }: { status: Status; label?: string }) {
   const meta = STATUS_META[status];
   return (
     <span className={`au-pill au-pill--${meta.tone}`} role="status" aria-live="polite">
-      <Icon name={meta.icon} size={18} />
+      {status === 'off' ? (
+        <span className="au-pill__dot" aria-hidden="true" />
+      ) : (
+        <Icon name={meta.icon} size={18} />
+      )}
       <span>{label ?? meta.label}</span>
     </span>
   );

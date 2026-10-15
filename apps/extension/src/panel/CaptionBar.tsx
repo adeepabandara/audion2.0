@@ -19,14 +19,14 @@ export interface CaptionBarProps {
  * and Meet captions that). Dark translucent background with white text regardless of theme, like Meet.
  */
 export function CaptionBar({ name, text, speaking, size, position, clearance }: CaptionBarProps) {
-  // Above the Audion pill (about 56 px tall) as well as Meet's control bar, so the two never overlap.
+  // Above the Ola pill (about 56 px tall) as well as Meet's control bar, so the two never overlap.
   const place = position === 'top' ? { top: 16 } : { bottom: clearance + 64 };
   return (
     <div
       className="ap-caption"
       role="status"
       aria-live="polite"
-      aria-label="Audion caption"
+      aria-label="Ola caption"
       style={{ ...place, fontSize: FONT[size] }}
     >
       <Wordmark markOnly size={22} />

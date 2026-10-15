@@ -5,6 +5,8 @@ interface Options {
   position: Position;
   size: () => Size;
   minBottom: number;
+  /** The area the panel may move in: the browser window, or (web demo) the call window. */
+  viewport: () => Size;
   onMove(p: Position): void;
   onCommit(p: Position): void;
 }
@@ -12,14 +14,15 @@ interface Options {
 const STEP = 16;
 
 /** Pointer drag on the grip, plus arrow keys (Shift = bigger steps) so moving the panel works without a mouse. */
-export function useDrag({ position, size, minBottom, onMove, onCommit }: Options) {
+export function useDrag({ position, size, minBottom, viewport, onMove, onCommit }: Options) {
   const start = useRef<{ x: number; y: number; pos: Position } | null>(null);
   const latest = useRef(position);
   latest.current = position;
-  const viewport = () => ({ width: innerWidth, height: innerHeight });
+  const viewportRef = useRef(viewport);
+  viewportRef.current = viewport;
 
   const next = useCallback(
-    (p: Position) => clampPosition(p, size(), viewport(), minBottom),
+    (p: Position) => clampPosition(p, size(), viewportRef.current(), minBottom),
     [size, minBottom],
   );
 

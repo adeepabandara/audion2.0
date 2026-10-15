@@ -39,6 +39,8 @@ export interface SegmenterState {
   needRest: boolean;
   /** A sign finished since the last pause event. */
   pausePending: boolean;
+  /** When the last accepted sign ended. A pause is measured from here, whether or not the hands are in view. */
+  lastSignEndT: number | null;
 }
 
 export type DiscardReason = 'tooShort' | 'tooLong';
@@ -60,6 +62,7 @@ export const initialSegmenter = (): SegmenterState => ({
   restSinceT: null,
   needRest: false,
   pausePending: false,
+  lastSignEndT: null,
 });
 
 const ALPHA = 0.5;
@@ -106,12 +109,9 @@ export function stepSegmenter(
     s.signStartT = s.restSinceT = null;
     s.needRest = false;
     events.push({ type: 'handsLeft', t: endT });
-  } else if (s.pausePending && s.lastSeenT !== null && t - s.lastSeenT >= cfg.pauseMs) {
-    s.pausePending = false;
-    events.push({ type: 'pause', t });
   }
 
-  if (!visible) return [s, events];
+  if (!visible) return [pauseIfIdle(s, t, cfg, events), events];
 
   switch (s.phase) {
     case 'seeing':
@@ -143,7 +143,31 @@ export function stepSegmenter(
       }
       break;
   }
-  return [s, events];
+  return [pauseIfIdle(s, t, cfg, events), events];
+}
+
+/**
+ * The signer has finished a sentence when no new sign has started for `pauseMs` after the last one ended. Hands
+ * leaving the picture is not required: people often leave them resting in view, and then nothing would ever be
+ * spoken automatically.
+ */
+function pauseIfIdle(
+  s: SegmenterState,
+  t: number,
+  cfg: SegmenterConfig,
+  events: SegmenterEvent[],
+): SegmenterState {
+  if (
+    s.pausePending &&
+    s.lastSignEndT !== null &&
+    s.phase !== 'signing' &&
+    s.phase !== 'holding' &&
+    t - s.lastSignEndT >= cfg.pauseMs
+  ) {
+    s.pausePending = false;
+    events.push({ type: 'pause', t });
+  }
+  return s;
 }
 
 function finish(
@@ -163,6 +187,7 @@ function finish(
   else {
     events.push({ type: 'signEnd', t, startT, endT, reason });
     s.pausePending = true;
+    s.lastSignEndT = t;
   }
 }
 

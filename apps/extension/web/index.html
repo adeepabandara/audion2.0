@@ -1,0 +1,1176 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Ola by Audion: sign to speech</title>
+    <meta
+      name="description"
+      content="Sign to your camera and Ola turns it into English captions and a spoken voice. Powered by Gemini on Google Cloud."
+    />
+    <link rel="icon" type="image/png" href="/icon/32.png" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;600;700&display=swap"
+      rel="stylesheet"
+    />
+    <style>
+      /* Ola's brand: the same tokens as the panel and the extension (packages/ui/src/styles/tokens.css). */
+      :root {
+        --bg: #ffffff;
+        --fg: #111827;
+        --muted: #4b5563;
+        --primary: #0f766e;
+        --on-primary: #ffffff;
+        --accent: #0f766e;
+        --card: #f6f7f9;
+        --line: #e5e7eb;
+        --glow: rgba(15, 118, 110, 0.16);
+      }
+      @media (prefers-color-scheme: dark) {
+        :root {
+          --bg: #0f1115;
+          --fg: #f3f4f6;
+          --muted: #a1a7b3;
+          --accent: #2dd4bf;
+          --card: #171a21;
+          --line: #2b303b;
+          --glow: rgba(15, 118, 110, 0.38);
+        }
+      }
+      * {
+        box-sizing: border-box;
+      }
+      body {
+        margin: 0;
+        background: radial-gradient(ellipse 90% 60% at 50% 0%, var(--glow), transparent 70%),
+          var(--bg);
+        background-attachment: scroll;
+        color: var(--fg);
+        font:
+          16px/1.55 Poppins,
+          system-ui,
+          sans-serif;
+      }
+      main {
+        max-width: 760px;
+        margin: 0 auto;
+        padding: 48px 16px 96px;
+      }
+      .brand {
+        color: var(--fg);
+        line-height: 0;
+      }
+      .brand svg {
+        display: block;
+      }
+      h1 {
+        font-size: clamp(2rem, 6vw, 3rem);
+        margin: 0 0 8px;
+        letter-spacing: -0.02em;
+      }
+      h2 {
+        font-size: 1.25rem;
+        margin: 40px 0 8px;
+      }
+      p,
+      li {
+        color: var(--muted);
+      }
+      .lead {
+        font-size: 1.15rem;
+        color: var(--fg);
+      }
+      button.cta {
+        margin-top: 16px;
+        padding: 14px 24px;
+        font:
+          600 1rem Poppins,
+          sans-serif;
+        border: 0;
+        border-radius: 12px;
+        background: var(--primary);
+        color: var(--on-primary);
+        cursor: pointer;
+      }
+      button.cta:focus-visible {
+        outline: 3px solid var(--fg);
+        outline-offset: 3px;
+      }
+      .card {
+        background: var(--card);
+        border: 1px solid var(--line);
+        border-radius: 14px;
+        padding: 16px 20px;
+      }
+      .status {
+        font-size: 0.9rem;
+        margin-top: 12px;
+      }
+      footer {
+        margin-top: 56px;
+        font-size: 0.85rem;
+        color: var(--muted);
+      }
+      a {
+        color: var(--accent);
+      }
+      .try {
+        list-style: none;
+        padding: 0;
+        margin: 12px 0 0;
+        display: grid;
+        gap: 12px;
+      }
+      .try li {
+        background: var(--card);
+        border: 1px solid var(--line);
+        border-radius: 14px;
+        padding: 14px 18px;
+      }
+      .try .says {
+        color: var(--fg);
+        font-weight: 600;
+        margin: 0 0 8px;
+      }
+      .try .says::before {
+        content: 'Ola says: ';
+        font-weight: 400;
+        color: var(--muted);
+      }
+      .chips {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 6px;
+        margin: 0;
+        padding: 0;
+        list-style: none;
+      }
+      .chips li {
+        padding: 2px 10px;
+        border-radius: 999px;
+        background: transparent;
+        border: 1px solid var(--accent);
+        color: var(--fg);
+        font-weight: 600;
+        font-size: 0.85rem;
+        letter-spacing: 0.03em;
+      }
+      .chips li + li::before {
+        content: none;
+      }
+      .chips a {
+        color: inherit;
+        text-decoration: none;
+      }
+      .chips a:hover {
+        text-decoration: underline;
+      }
+      .chips a:focus-visible {
+        outline: 3px solid var(--fg);
+        outline-offset: 3px;
+        border-radius: 4px;
+      }
+      .chips.all {
+        margin-top: 12px;
+      }
+      .voices {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        margin-top: 12px;
+      }
+      button.voice {
+        padding: 10px 16px;
+        font:
+          600 0.95rem Poppins,
+          sans-serif;
+        border: 1px solid var(--accent);
+        border-radius: 10px;
+        background: transparent;
+        color: var(--fg);
+        cursor: pointer;
+      }
+      button.voice:hover {
+        background: var(--card);
+      }
+      button.voice:focus-visible {
+        outline: 3px solid var(--fg);
+        outline-offset: 3px;
+      }
+      .trace {
+        margin: 12px 0 0;
+        padding-left: 0;
+        list-style: none;
+        font:
+          0.85rem/1.5 ui-monospace,
+          Menlo,
+          monospace;
+        color: var(--fg);
+      }
+      .trace li {
+        padding: 4px 0;
+        border-bottom: 1px solid var(--line);
+      }
+      .sr-only {
+        position: absolute;
+        width: 1px;
+        height: 1px;
+        overflow: hidden;
+        clip: rect(0 0 0 0);
+        white-space: nowrap;
+      }
+      header.top {
+        max-width: 1180px;
+        margin: 0 auto;
+        padding: 20px 16px 12px;
+        display: grid;
+        gap: 4px;
+      }
+      header.top h1 {
+        margin: 0;
+      }
+      header.top .lead {
+        margin: 0;
+      }
+      header.top .row {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 4px 16px;
+      }
+      header.top button.cta {
+        margin-top: 8px;
+      }
+      header.top .status {
+        margin: 8px 0 0;
+      }
+      .stage {
+        max-width: 1180px;
+        margin: 0 auto;
+        padding: 16px 16px 0;
+      }
+      .browser {
+        /* Fits the first screen below the header; the Maximise button gives the full view. */
+        height: clamp(560px, calc(100vh - 48px), 900px);
+        min-height: 560px;
+        display: flex;
+        flex-direction: column;
+        overflow: hidden;
+        border: 1px solid var(--line);
+        border-radius: 14px;
+        background: #12151b;
+        box-shadow: 0 10px 40px rgba(0, 0, 0, 0.25);
+        position: relative;
+        z-index: 50;
+      }
+      .browser.is-max {
+        position: fixed;
+        inset: 0;
+        height: auto;
+        min-height: 0;
+        border-radius: 0;
+        border: 0;
+        z-index: 1000;
+      }
+      .browser__bar {
+        flex: none;
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        padding: 8px 12px;
+        background: #1f232c;
+        color: #f3f4f6;
+        font-size: 0.8rem;
+      }
+      .lights {
+        display: flex;
+        align-items: center;
+      }
+      .light {
+        width: 24px;
+        height: 24px;
+        padding: 0;
+        border: 0;
+        background: transparent;
+        display: grid;
+        place-items: center;
+        cursor: default;
+        position: relative;
+      }
+      .light::before {
+        content: '';
+        width: 12px;
+        height: 12px;
+        border-radius: 50%;
+        background: #5f6368;
+        display: block;
+      }
+      .light--red::before {
+        background: #ff5f57;
+      }
+      .light--yellow::before {
+        background: #febc2e;
+      }
+      .light--green {
+        cursor: pointer;
+      }
+      .light--green::before {
+        background: #28c840;
+      }
+      .light--green svg {
+        position: absolute;
+        width: 9px;
+        height: 9px;
+        fill: #0b3d12;
+        opacity: 0;
+      }
+      .lights:hover .light--green svg,
+      .light--green:focus-visible svg {
+        opacity: 1;
+      }
+      .light--green:focus-visible {
+        outline: 3px solid #fff;
+        outline-offset: -2px;
+        border-radius: 50%;
+      }
+      .tab {
+        padding: 5px 14px;
+        border-radius: 8px 8px 0 0;
+        background: #12151b;
+        white-space: nowrap;
+      }
+      .address {
+        flex: 1;
+        min-width: 0;
+        padding: 5px 14px;
+        border-radius: 999px;
+        background: #12151b;
+        color: #a1a7b3;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+      .call {
+        position: relative;
+        flex: 1;
+        min-height: 0;
+        display: flex;
+        flex-direction: column;
+        background: #12151b;
+        color: #f3f4f6;
+        contain: layout paint;
+      }
+      .tiles {
+        flex: 1;
+        min-height: 0;
+        padding: 14px;
+        display: grid;
+        gap: 12px;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        grid-template-rows: repeat(2, minmax(0, 1fr));
+      }
+      .tile {
+        position: relative;
+        border-radius: 12px;
+        background: #1f232c;
+        display: grid;
+        place-items: center;
+        min-height: 140px;
+      }
+      .tile .avatar {
+        width: 84px;
+        height: 84px;
+        border-radius: 50%;
+        display: grid;
+        place-items: center;
+        font-size: 2rem;
+        font-weight: 600;
+        color: #12151b;
+      }
+      .tile {
+        overflow: hidden;
+      }
+      .tile video {
+        position: absolute;
+        inset: 0;
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+        background: #1f232c;
+      }
+      .tile .name {
+        z-index: 1;
+        position: absolute;
+        left: 12px;
+        bottom: 10px;
+        font-size: 0.85rem;
+        padding: 2px 8px;
+        border-radius: 6px;
+        background: rgba(32, 33, 36, 0.75);
+      }
+      .tile.you {
+        outline: 2px solid #2dd4bf;
+      }
+      .meet-captions {
+        flex: none;
+        min-height: 54px;
+        padding: 6px 16px;
+        text-align: center;
+        font-size: 0.9rem;
+        line-height: 1.4;
+        color: #f3f4f6;
+      }
+      .meet-captions p {
+        margin: 0;
+      }
+      .meet-captions strong {
+        color: #2dd4bf;
+      }
+      #context-box {
+        white-space: pre-wrap;
+      }
+      .controls {
+        flex: none;
+        height: 72px;
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        gap: 12px;
+        background: #12151b;
+      }
+      .controls span {
+        width: 46px;
+        height: 46px;
+        border-radius: 50%;
+        background: #2b303b;
+        display: grid;
+        place-items: center;
+      }
+      .controls span.leave {
+        width: 64px;
+        border-radius: 24px;
+        background: #d93025;
+      }
+      .controls {
+        position: relative;
+      }
+      button.expand {
+        position: absolute;
+        right: 16px;
+        width: 46px;
+        height: 46px;
+        border: 0;
+        border-radius: 50%;
+        background: #2b303b;
+        display: grid;
+        place-items: center;
+        cursor: pointer;
+      }
+      button.expand:hover {
+        background: #5f6368;
+      }
+      button.expand:focus-visible {
+        outline: 3px solid #fff;
+        outline-offset: 2px;
+      }
+      .controls svg {
+        width: 22px;
+        height: 22px;
+        fill: none;
+        stroke: #f3f4f6;
+        stroke-width: 2;
+        stroke-linecap: round;
+        stroke-linejoin: round;
+      }
+      button.pause {
+        margin-right: 8px;
+        padding: 4px 12px;
+        font:
+          600 0.85rem Poppins,
+          sans-serif;
+        color: var(--fg);
+        background: transparent;
+        border: 1px solid var(--accent);
+        border-radius: 8px;
+        cursor: pointer;
+      }
+      button.pause:focus-visible {
+        outline: 3px solid var(--fg);
+        outline-offset: 3px;
+      }
+      .toolbar {
+        flex: none;
+        display: flex;
+        align-items: center;
+        gap: 4px;
+      }
+      .toolbar__icon {
+        width: 30px;
+        height: 30px;
+        padding: 0;
+        border: 0;
+        border-radius: 50%;
+        background: transparent;
+        display: grid;
+        place-items: center;
+      }
+      .toolbar__icon svg {
+        width: 18px;
+        height: 18px;
+        fill: none;
+        stroke: #a1a7b3;
+        stroke-width: 1.8;
+        stroke-linejoin: round;
+      }
+      button.toolbar__ola {
+        width: 42px;
+        height: 28px;
+        border-radius: 7px;
+        background: #000;
+        color: #fff;
+        cursor: pointer;
+      }
+      button.toolbar__ola svg {
+        width: auto;
+        height: 13px;
+        fill: currentColor;
+        stroke: none;
+      }
+      button.toolbar__ola:hover {
+        background: #1f232c;
+      }
+      button.toolbar__ola:focus-visible {
+        outline: 3px solid #fff;
+        outline-offset: 1px;
+      }
+      .sim-note {
+        margin: 8px 0 0;
+        font-size: 0.85rem;
+      }
+      body.max-open {
+        overflow: hidden;
+      }
+      @media (max-width: 560px) {
+        .address {
+          display: none;
+        }
+        .browser {
+          min-height: 420px;
+        }
+      }
+      .arrow {
+        color: var(--muted);
+      }
+      .note {
+        font-size: 0.9rem;
+      }
+    </style>
+  </head>
+  <body>
+    <h1 class="sr-only">Ola by Audion: sign to speech, in a simulated video call</h1>
+
+    <section class="stage" aria-labelledby="stage-title">
+      <h2 id="stage-title" class="sr-only">A simulated video call with Ola</h2>
+      <div class="browser" id="browser">
+        <div class="browser__bar">
+          <span class="lights">
+            <span class="light light--red" aria-hidden="true"></span>
+            <span class="light light--yellow" aria-hidden="true"></span>
+            <button
+              type="button"
+              class="light light--green"
+              data-maximise
+              aria-pressed="false"
+              aria-label="Maximise window"
+              title="Maximise window"
+            >
+              <svg viewBox="0 0 12 12" aria-hidden="true">
+                <path d="M3 9V5.2L6.8 9H3zM9 3v3.8L5.2 3H9z" />
+              </svg>
+            </button>
+          </span>
+          <span class="tab">Team call</span>
+          <span class="address" aria-hidden="true">ola-demo.example/team-call</span>
+          <span class="toolbar">
+            <span class="toolbar__icon" aria-hidden="true" title="Extensions"
+              ><svg viewBox="0 0 24 24">
+                <path
+                  d="M10 4a2 2 0 1 1 4 0v1h3a1 1 0 0 1 1 1v3h-1a2 2 0 1 0 0 4h1v3a1 1 0 0 1-1 1h-3v-1a2 2 0 1 0-4 0v1H7a1 1 0 0 1-1-1v-3H5a2 2 0 1 1 0-4h1V6a1 1 0 0 1 1-1h3V4z"
+                /></svg
+            ></span>
+            <button
+              type="button"
+              class="toolbar__icon toolbar__ola"
+              id="toolbar-ola"
+              aria-label="Ola extension: open or close the panel"
+              title="Ola by Audion"
+            >
+              <span id="toolbar-mark" aria-hidden="true">Ola</span>
+            </button>
+          </span>
+        </div>
+        <div class="call" id="call-stage">
+          <div class="tiles">
+            <div class="tile you">
+              <span class="avatar" style="background: #81c995" aria-hidden="true">Y</span
+              ><span class="name">You (signing with Ola)</span>
+            </div>
+            <div class="tile">
+              <span class="avatar" style="background: #aecbfa" aria-hidden="true">M</span>
+              <video
+                src="/call/person1.mp4"
+                autoplay
+                muted
+                loop
+                playsinline
+                preload="auto"
+                aria-hidden="true"
+                tabindex="-1"
+                data-call-video
+              ></video>
+              <span class="name">Marcus</span>
+            </div>
+            <div class="tile">
+              <span class="avatar" style="background: #aecbfa" aria-hidden="true">P</span>
+              <video
+                src="/call/person2.mp4"
+                autoplay
+                muted
+                loop
+                playsinline
+                preload="auto"
+                aria-hidden="true"
+                tabindex="-1"
+                data-call-video
+              ></video>
+              <span class="name">Priya</span>
+            </div>
+            <div class="tile">
+              <span class="avatar" style="background: #aecbfa" aria-hidden="true">D</span>
+              <video
+                src="/call/person3.mp4"
+                autoplay
+                muted
+                loop
+                playsinline
+                preload="auto"
+                aria-hidden="true"
+                tabindex="-1"
+                data-call-video
+              ></video>
+              <span class="name">Dana</span>
+            </div>
+          </div>
+          <div id="meet-captions" class="meet-captions" aria-label="Simulated live captions"></div>
+          <div class="controls">
+            <span
+              ><svg viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M12 3a3 3 0 0 0-3 3v6a3 3 0 0 0 6 0V6a3 3 0 0 0-3-3z" />
+                <path d="M5 11a7 7 0 0 0 14 0M12 18v3" /></svg></span
+            ><span
+              ><svg viewBox="0 0 24 24" aria-hidden="true">
+                <rect x="3" y="6" width="13" height="12" rx="2" />
+                <path d="M16 10l5-3v10l-5-3" /></svg></span
+            ><span
+              ><svg viewBox="0 0 24 24" aria-hidden="true">
+                <rect x="3" y="5" width="18" height="14" rx="2" />
+                <path d="M8 11h2M13 11h3M8 15h5" /></svg></span
+            ><span
+              ><svg viewBox="0 0 24 24" aria-hidden="true">
+                <path
+                  d="M8 12V6a1.5 1.5 0 0 1 3 0v5M11 11V4.5a1.5 1.5 0 0 1 3 0V11M14 11V6a1.5 1.5 0 0 1 3 0v8a6 6 0 0 1-6 6c-3 0-4-2-6-5l-1-2a1.5 1.5 0 0 1 2.5-1.5L8 14"
+                /></svg></span
+            ><span class="leave"
+              ><svg viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M3 14c5-5 13-5 18 0l-3 3-3-2v-3a12 12 0 0 0-6 0v3l-3 2z" /></svg
+            ></span>
+            <button
+              type="button"
+              class="expand"
+              data-maximise
+              aria-pressed="false"
+              aria-label="Maximise window"
+              title="Maximise window"
+            >
+              <svg viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5" />
+              </svg>
+            </button>
+          </div>
+        </div>
+      </div>
+      <p class="sim-note">
+        <button type="button" class="pause" id="pause-videos" aria-pressed="false">
+          Pause call videos
+        </button>
+        This is a simulated call so you can try Ola without joining a meeting. The real thing is the
+        Chrome extension, which puts Ola into your Google Meet, Teams or Zoom call.
+      </p>
+    </section>
+
+    <main>
+      <h2>How to try it</h2>
+      <ol>
+        <li>
+          Open Ola from the small pill at the bottom right of the call (or the Ola icon in the
+          browser bar), switch it on, and allow the camera. Video stays in your browser's memory and
+          is never stored.
+        </li>
+        <li>
+          Make one American Sign Language sign, then lower your hands. Ola sends a short clip for
+          recognition.
+        </li>
+        <li>Read the caption and listen to the voice. Turn your sound on.</li>
+      </ol>
+      <p class="card">
+        Recognition can take a few seconds per sign. If you do not sign, you can still look at how
+        it works below.
+      </p>
+
+      <h2 id="try-heading">Four sentences to try</h2>
+      <p>
+        Make the signs in order, lowering your hands after each one. After the last sign, wait a
+        moment and Ola builds and speaks the sentence. The wording may vary a little.
+      </p>
+      <ol class="try" aria-labelledby="try-heading">
+        <li>
+          <p class="says">Hello, please wait.</p>
+          <ul class="chips" aria-label="Signs in order">
+            <li>
+              <a
+                href="https://www.signingsavvy.com/search/hello"
+                target="_blank"
+                rel="noopener noreferrer"
+                aria-label="hello: see the sign (opens in a new tab)"
+                >HELLO</a
+              >
+            </li>
+            <span class="arrow" aria-hidden="true">→</span>
+            <li>
+              <a
+                href="https://www.signingsavvy.com/search/please"
+                target="_blank"
+                rel="noopener noreferrer"
+                aria-label="please: see the sign (opens in a new tab)"
+                >PLEASE</a
+              >
+            </li>
+            <span class="arrow" aria-hidden="true">→</span>
+            <li>
+              <a
+                href="https://www.signingsavvy.com/search/wait"
+                target="_blank"
+                rel="noopener noreferrer"
+                aria-label="wait: see the sign (opens in a new tab)"
+                >WAIT</a
+              >
+            </li>
+          </ul>
+        </li>
+        <li>
+          <p class="says">Where is the time?</p>
+          <ul class="chips" aria-label="Signs in order">
+            <li>
+              <a
+                href="https://www.signingsavvy.com/search/where"
+                target="_blank"
+                rel="noopener noreferrer"
+                aria-label="where: see the sign (opens in a new tab)"
+                >WHERE</a
+              >
+            </li>
+            <span class="arrow" aria-hidden="true">→</span>
+            <li>
+              <a
+                href="https://www.signingsavvy.com/search/time"
+                target="_blank"
+                rel="noopener noreferrer"
+                aria-label="time: see the sign (opens in a new tab)"
+                >TIME</a
+              >
+            </li>
+          </ul>
+        </li>
+        <li>
+          <p class="says">Thank you, I'm fine. Bye.</p>
+          <ul class="chips" aria-label="Signs in order">
+            <li>
+              <a
+                href="https://www.signingsavvy.com/search/thank%20you"
+                target="_blank"
+                rel="noopener noreferrer"
+                aria-label="thank you: see the sign (opens in a new tab)"
+                >THANKYOU</a
+              >
+            </li>
+            <span class="arrow" aria-hidden="true">→</span>
+            <li>
+              <a
+                href="https://www.signingsavvy.com/search/fine"
+                target="_blank"
+                rel="noopener noreferrer"
+                aria-label="fine: see the sign (opens in a new tab)"
+                >FINE</a
+              >
+            </li>
+            <span class="arrow" aria-hidden="true">→</span>
+            <li>
+              <a
+                href="https://www.signingsavvy.com/search/bye"
+                target="_blank"
+                rel="noopener noreferrer"
+                aria-label="bye: see the sign (opens in a new tab)"
+                >BYE</a
+              >
+            </li>
+          </ul>
+        </li>
+        <li>
+          <p class="says">Not now, later, tomorrow.</p>
+          <ul class="chips" aria-label="Signs in order">
+            <li>
+              <a
+                href="https://www.signingsavvy.com/search/not"
+                target="_blank"
+                rel="noopener noreferrer"
+                aria-label="not: see the sign (opens in a new tab)"
+                >NOT</a
+              >
+            </li>
+            <span class="arrow" aria-hidden="true">→</span>
+            <li>
+              <a
+                href="https://www.signingsavvy.com/search/now"
+                target="_blank"
+                rel="noopener noreferrer"
+                aria-label="now: see the sign (opens in a new tab)"
+                >NOW</a
+              >
+            </li>
+            <span class="arrow" aria-hidden="true">→</span>
+            <li>
+              <a
+                href="https://www.signingsavvy.com/search/later"
+                target="_blank"
+                rel="noopener noreferrer"
+                aria-label="later: see the sign (opens in a new tab)"
+                >LATER</a
+              >
+            </li>
+            <span class="arrow" aria-hidden="true">→</span>
+            <li>
+              <a
+                href="https://www.signingsavvy.com/search/tomorrow"
+                target="_blank"
+                rel="noopener noreferrer"
+                aria-label="tomorrow: see the sign (opens in a new tab)"
+                >TOMORROW</a
+              >
+            </li>
+          </ul>
+        </li>
+      </ol>
+      <h2 id="signs-heading">See each sign</h2>
+      <p>
+        Not sure how a sign looks? Choose a word to see it on SigningSavvy, a public ASL dictionary.
+        It opens in a new tab. Dictionaries show more than one way to sign some words, so pick the
+        plain, common one.
+      </p>
+      <ul class="chips all" aria-labelledby="signs-heading">
+        <li>
+          <a
+            href="https://www.signingsavvy.com/search/hello"
+            target="_blank"
+            rel="noopener noreferrer"
+            aria-label="hello: see the sign (opens in a new tab)"
+            >HELLO</a
+          >
+        </li>
+        <li>
+          <a
+            href="https://www.signingsavvy.com/search/bye"
+            target="_blank"
+            rel="noopener noreferrer"
+            aria-label="bye: see the sign (opens in a new tab)"
+            >BYE</a
+          >
+        </li>
+        <li>
+          <a
+            href="https://www.signingsavvy.com/search/yes"
+            target="_blank"
+            rel="noopener noreferrer"
+            aria-label="yes: see the sign (opens in a new tab)"
+            >YES</a
+          >
+        </li>
+        <li>
+          <a
+            href="https://www.signingsavvy.com/search/no"
+            target="_blank"
+            rel="noopener noreferrer"
+            aria-label="no: see the sign (opens in a new tab)"
+            >NO</a
+          >
+        </li>
+        <li>
+          <a
+            href="https://www.signingsavvy.com/search/please"
+            target="_blank"
+            rel="noopener noreferrer"
+            aria-label="please: see the sign (opens in a new tab)"
+            >PLEASE</a
+          >
+        </li>
+        <li>
+          <a
+            href="https://www.signingsavvy.com/search/thank%20you"
+            target="_blank"
+            rel="noopener noreferrer"
+            aria-label="thank you: see the sign (opens in a new tab)"
+            >THANKYOU</a
+          >
+        </li>
+        <li>
+          <a
+            href="https://www.signingsavvy.com/search/wait"
+            target="_blank"
+            rel="noopener noreferrer"
+            aria-label="wait: see the sign (opens in a new tab)"
+            >WAIT</a
+          >
+        </li>
+        <li>
+          <a
+            href="https://www.signingsavvy.com/search/why"
+            target="_blank"
+            rel="noopener noreferrer"
+            aria-label="why: see the sign (opens in a new tab)"
+            >WHY</a
+          >
+        </li>
+        <li>
+          <a
+            href="https://www.signingsavvy.com/search/who"
+            target="_blank"
+            rel="noopener noreferrer"
+            aria-label="who: see the sign (opens in a new tab)"
+            >WHO</a
+          >
+        </li>
+        <li>
+          <a
+            href="https://www.signingsavvy.com/search/where"
+            target="_blank"
+            rel="noopener noreferrer"
+            aria-label="where: see the sign (opens in a new tab)"
+            >WHERE</a
+          >
+        </li>
+        <li>
+          <a
+            href="https://www.signingsavvy.com/search/now"
+            target="_blank"
+            rel="noopener noreferrer"
+            aria-label="now: see the sign (opens in a new tab)"
+            >NOW</a
+          >
+        </li>
+        <li>
+          <a
+            href="https://www.signingsavvy.com/search/later"
+            target="_blank"
+            rel="noopener noreferrer"
+            aria-label="later: see the sign (opens in a new tab)"
+            >LATER</a
+          >
+        </li>
+        <li>
+          <a
+            href="https://www.signingsavvy.com/search/tomorrow"
+            target="_blank"
+            rel="noopener noreferrer"
+            aria-label="tomorrow: see the sign (opens in a new tab)"
+            >TOMORROW</a
+          >
+        </li>
+        <li>
+          <a
+            href="https://www.signingsavvy.com/search/time"
+            target="_blank"
+            rel="noopener noreferrer"
+            aria-label="time: see the sign (opens in a new tab)"
+            >TIME</a
+          >
+        </li>
+        <li>
+          <a
+            href="https://www.signingsavvy.com/search/finish"
+            target="_blank"
+            rel="noopener noreferrer"
+            aria-label="finish: see the sign (opens in a new tab)"
+            >FINISH</a
+          >
+        </li>
+        <li>
+          <a
+            href="https://www.signingsavvy.com/search/think"
+            target="_blank"
+            rel="noopener noreferrer"
+            aria-label="think: see the sign (opens in a new tab)"
+            >THINK</a
+          >
+        </li>
+        <li>
+          <a
+            href="https://www.signingsavvy.com/search/look"
+            target="_blank"
+            rel="noopener noreferrer"
+            aria-label="look: see the sign (opens in a new tab)"
+            >LOOK</a
+          >
+        </li>
+        <li>
+          <a
+            href="https://www.signingsavvy.com/search/listen"
+            target="_blank"
+            rel="noopener noreferrer"
+            aria-label="listen: see the sign (opens in a new tab)"
+            >LISTEN</a
+          >
+        </li>
+        <li>
+          <a
+            href="https://www.signingsavvy.com/search/talk"
+            target="_blank"
+            rel="noopener noreferrer"
+            aria-label="talk: see the sign (opens in a new tab)"
+            >TALK</a
+          >
+        </li>
+        <li>
+          <a
+            href="https://www.signingsavvy.com/search/fine"
+            target="_blank"
+            rel="noopener noreferrer"
+            aria-label="fine: see the sign (opens in a new tab)"
+            >FINE</a
+          >
+        </li>
+        <li>
+          <a
+            href="https://www.signingsavvy.com/search/same"
+            target="_blank"
+            rel="noopener noreferrer"
+            aria-label="same: see the sign (opens in a new tab)"
+            >SAME</a
+          >
+        </li>
+        <li>
+          <a
+            href="https://www.signingsavvy.com/search/not"
+            target="_blank"
+            rel="noopener noreferrer"
+            aria-label="not: see the sign (opens in a new tab)"
+            >NOT</a
+          >
+        </li>
+      </ul>
+
+      <h2 id="context-heading">Meeting context</h2>
+      <p>
+        The call above has live captions from a short made-up meeting. Every so often Gemini
+        summarises them, and that summary helps Gemma and Gemini word your sentences for what the
+        meeting is about. Try signing WHERE then TIME and compare the sentence with the context
+        switched off. In a real Meet call the same thing reads Meet's own captions (turn them on
+        with the CC button). Captions are never stored.
+      </p>
+      <p
+        class="card"
+        id="context-box"
+        role="status"
+        aria-live="polite"
+        aria-labelledby="context-heading"
+      >
+        Not following the meeting yet.
+      </p>
+
+      <h2 id="trace-heading">Live pipeline</h2>
+      <p>
+        See which model did each step, and how long it took. Hands are found on your device by
+        MediaPipe. Then the sign is named on your device by the sign model, with no cloud call.
+        Gemma (or Gemini as the backup) writes the sentence, and Google Text-to-Speech speaks it.
+      </p>
+      <ol id="trace" class="trace" aria-labelledby="trace-heading" aria-live="polite" reversed></ol>
+
+      <h2 id="test-heading">No camera? Test with a video</h2>
+      <p>
+        Pick a video of someone signing. It plays in place of the camera, and nothing is uploaded:
+        it stays in your browser. Then turn Ola on. Ola recognises one sign at a time, so the video
+        needs a short rest between signs, and only the 22 signs below can be named.
+      </p>
+      <p class="card">
+        <label>Video file <input type="file" id="test-video" accept="video/*" /></label><br />
+        <label
+          >Playback speed
+          <select id="test-speed">
+            <option value="1">Normal</option>
+            <option value="0.75">Slower (0.75×)</option>
+            <option value="0.5">Slow (0.5×)</option>
+          </select></label
+        ><br />
+        <span class="status" id="test-status" role="status" aria-live="polite"></span>
+      </p>
+
+      <h2 id="voices-heading">Hear the voices</h2>
+      <p>
+        Ola speaks with Google Cloud Text-to-Speech. Choose a voice in Ola's settings (the gear in
+        the panel). Press a button to hear it.
+      </p>
+      <div id="voice-buttons" class="voices" role="group" aria-labelledby="voices-heading"></div>
+      <p class="status" id="voice-status" role="status" aria-live="polite"></p>
+
+      <h2 id="gemma-heading">Sentences written on this device</h2>
+      <p>
+        Gemma 4 is Google's open model. When you turn Ola on, your browser starts getting it (about
+        2 GB, once, then kept in your browser) and, if it supports WebGPU, Gemma writes your
+        sentences right here with no server call for that step. Until it is ready, and if it cannot
+        run, Gemini writes them. Untick the box to stop it.
+      </p>
+      <p class="card">
+        <label
+          ><input type="checkbox" id="gemma-toggle" /> Use Gemma 4 on this device (about 2 GB,
+          downloaded once)</label
+        ><br />
+        <span class="status" id="gemma-status" role="status" aria-live="polite"></span><br />
+        <span class="status" id="sentence-writer" role="status" aria-live="polite"></span>
+      </p>
+
+      <h2>How it works</h2>
+      <ul>
+        <li>Hand tracking runs on your device (MediaPipe).</li>
+        <li>
+          A small sign model, trained on isolated ASL signs, names each sign on your device in
+          milliseconds. No video is sent anywhere for this step.
+        </li>
+        <li>
+          Gemma, Google's open model, writes the sentence from several signs, on your device. Gemini
+          on Google Cloud writes it until Gemma has loaded, or if your browser cannot run it. Google
+          Cloud Text-to-Speech speaks it.
+        </li>
+        <li>Ola also works as a Chrome extension that speaks into Google Meet calls.</li>
+      </ul>
+
+      <footer>
+        <p class="status" id="service-status" role="status" aria-live="polite">
+          Checking the service…
+        </p>
+        Sign data comes from the PopSign project (CC BY). Hand tracking by MediaPipe. Runs on Google
+        Cloud Run.
+      </footer>
+    </main>
+    <script type="module" src="../src/web/main.tsx"></script>
+  </body>
+</html>

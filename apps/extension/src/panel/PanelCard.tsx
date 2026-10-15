@@ -76,7 +76,9 @@ function Preview({
       session.onFrame((frame) => {
         const c = canvas.current;
         const ctx = c?.getContext('2d');
-        if (c && ctx) drawLandmarks(ctx, frame, c.width, c.height);
+        // The web demo adds .ap-unmirrored while a video file stands in for the camera (see panel.css).
+        if (c && ctx)
+          drawLandmarks(ctx, frame, c.width, c.height, undefined, !c.closest('.ap-unmirrored'));
       }),
     [session],
   );
@@ -104,7 +106,7 @@ function Preview({
 }
 
 const CAMERA_TEXT = {
-  blocked: 'Chrome is blocking the camera on this site. Audion needs it to see your signs.',
+  blocked: 'Chrome is blocking the camera on this site. Ola needs it to see your signs.',
   busy: 'Your camera is in use by another app. Close that app, then try again.',
   missing: 'No camera was found. Plug one in or check your system settings, then try again.',
   unknown: 'Couldn’t start hand tracking. Reload this Meet tab, then try again.',
@@ -157,6 +159,10 @@ export interface PanelCardProps {
   onCollapse(): void;
   onOpenSettings(): void;
   onOpenSigns(): void;
+  /** The public web demo: there is no Meet call, so no call-audio messages, and the voice just plays aloud. */
+  demo?: boolean;
+  /** Show Speak and Cancel: only while the sentence waits for the signer ("Confirm first"). */
+  showActions?: boolean;
   style?: React.CSSProperties;
   dragHandlers: {
     onPointerDown(e: PointerEvent<HTMLButtonElement>): void;
@@ -170,6 +176,8 @@ export interface PanelCardProps {
 export const PanelCard = forwardRef<HTMLElement, PanelCardProps>(function PanelCard(
   {
     session,
+    demo = false,
+    showActions = false,
     state,
     view,
     onToggle,
@@ -195,21 +203,21 @@ export const PanelCard = forwardRef<HTMLElement, PanelCardProps>(function PanelC
   const label = (sign: string) => SIGN_LABEL[sign as keyof typeof SIGN_LABEL] ?? sign;
 
   return (
-    <section ref={ref} className="ap-card" aria-label="Audion panel" style={style}>
+    <section ref={ref} className="ap-card" aria-label="Ola panel" style={style}>
       <header className="ap-card__head">
         <button
           type="button"
           className="ap-grip"
-          aria-label="Move Audion panel. Drag, or use the arrow keys."
+          aria-label="Move Ola panel. Drag, or use the arrow keys."
           {...dragHandlers}
         >
           <Icon name="grip" size={18} />
         </button>
-        <Wordmark size={24} />
+        <Wordmark markOnly size={34} />
         <span className="ap-spacer" />
-        <Toggle label="Audion" hideLabel checked={state.on} onCheckedChange={onToggle} />
+        <Toggle label="Ola" hideLabel checked={state.on} onCheckedChange={onToggle} />
         <Button variant="ghost" icon="chevron-down" iconOnly onClick={onCollapse}>
-          Collapse Audion
+          Collapse Ola
         </Button>
       </header>
 
@@ -251,6 +259,10 @@ export const PanelCard = forwardRef<HTMLElement, PanelCardProps>(function PanelC
               state.chips.map((c) => (
                 <Chip key={c.id} state={c.state === 'normal' ? 'confirmed' : c.state}>
                   {label(c.sign)}
+                  {c.checking && <span className="ap-chip-note"> · checking</span>}
+                  {c.corrected && (
+                    <span className="ap-chip-note"> · was {label(c.corrected.was)}</span>
+                  )}
                 </Chip>
               ))
             )}
@@ -267,6 +279,30 @@ export const PanelCard = forwardRef<HTMLElement, PanelCardProps>(function PanelC
         </PopoverActions>
       </Popover>
 
+      {state.on &&
+        state.chips.length > 0 &&
+        state.sentence === null &&
+        !state.composing &&
+        state.inFlight === 0 && (
+          <p className="ap-note">
+            Keep signing to build a sentence. Ola speaks after a pause
+            {showActions ? ', or press Speak' : ''}.
+          </p>
+        )}
+
+      {state.on && state.context.state === 'waiting' && (
+        <p className="ap-note">
+          {demo
+            ? 'Meeting context: waiting for the meeting’s captions.'
+            : 'Meeting context: turn on captions (CC) in Meet so Ola can follow the conversation.'}
+        </p>
+      )}
+      {state.on && state.context.state === 'following' && state.context.summary && (
+        <p className="ap-note ap-context">
+          <strong>Following the meeting:</strong> {state.context.summary}
+        </p>
+      )}
+
       <div className="ap-sentence" aria-label="Sentence" aria-live="polite">
         {state.sentence !== null ? (
           state.sentence
@@ -277,27 +313,57 @@ export const PanelCard = forwardRef<HTMLElement, PanelCardProps>(function PanelC
         )}
       </div>
 
-      <div className="ap-actions">
-        <Button icon="wave" disabled={!canSpeak} onClick={() => void session.speakNow()}>
-          Speak
-        </Button>
-        <Button variant="secondary" disabled={!canCancel} onClick={session.clear}>
-          Cancel
-        </Button>
-      </div>
+      {/* Speak and Cancel only matter when the sentence waits for you ("Confirm first" in Settings). */}
+      {showActions && (
+        <div className="ap-actions">
+          <Button icon="wave" disabled={!canSpeak} onClick={() => void session.speakNow()}>
+            Speak
+          </Button>
+          <Button variant="secondary" disabled={!canCancel} onClick={session.clear}>
+            Cancel
+          </Button>
+        </div>
+      )}
 
       <Toggle
-        label="Speak into the call"
+        label={demo ? 'Speak aloud' : 'Speak into the call'}
         checked={!voiceMuted}
         onCheckedChange={(on) => onVoiceMutedChange(!on)}
       />
-      {state.on && state.micMuted && !voiceMuted && (
+      {!demo && state.on && !voiceMuted && state.delivered === false && (
+        <Banner tone="warning">
+          Ola’s voice didn’t reach the call: Meet isn’t sending it, so others probably heard
+          nothing. Try turning your Meet microphone off and on, or reload this tab.
+        </Banner>
+      )}
+      {!demo &&
+        state.on &&
+        !voiceMuted &&
+        state.callAudio === 'connected' &&
+        !state.micMuted &&
+        state.delivered !== false && (
+          <p className="ap-note ap-callaudio">
+            <Icon name="check" size={14} /> Call audio connected
+            {state.delivered === true ? ': your last sentence reached the call.' : '.'}
+          </p>
+        )}
+      {!demo &&
+        state.on &&
+        !voiceMuted &&
+        state.callAudio === 'none' &&
+        !state.problems.includes('voiceUnavailable') && (
+          <Banner tone="warning">
+            Not connected to the call: Meet hasn’t given Ola its microphone yet. Unmute your Meet
+            microphone, or reload this tab. You can still hear Ola on this device.
+          </Banner>
+        )}
+      {!demo && state.on && state.micMuted && !voiceMuted && (
         <Banner tone="info">
-          Your Meet microphone is muted, so others can’t hear Audion. Unmute it in Meet.
+          Your Meet microphone is muted, so others can’t hear Ola. Unmute it in Meet.
         </Banner>
       )}
       {voiceMuted && state.on && (
-        <Banner tone="info">Audion’s voice is off. Sentences appear as captions only.</Banner>
+        <Banner tone="info">Ola’s voice is off. Sentences appear as captions only.</Banner>
       )}
       {state.notice && <Banner tone="info">{state.notice}</Banner>}
 

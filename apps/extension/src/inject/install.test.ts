@@ -9,6 +9,27 @@ let fake: ReturnType<typeof makeFakeContext>;
 let original: ReturnType<typeof vi.fn>;
 let win: W;
 let uninstall: () => void;
+// Whether the fake call's outgoing audio picks up Ola's voice while it plays (energy rises with each sound played).
+let voiceReachesCall = true;
+
+class FakeSender {
+  constructor(public track: { kind: string } | null) {}
+  async getStats() {
+    const energy = voiceReachesCall ? fake.ctx.played * 0.5 : 0;
+    return new Map([['ms', { type: 'media-source', kind: 'audio', totalAudioEnergy: energy }]]);
+  }
+  async replaceTrack(track: { kind: string } | null) {
+    this.track = track;
+  }
+}
+class FakePeerConnection {
+  addTrack(track: { kind: string }) {
+    return new FakeSender(track);
+  }
+  addTransceiver(track: { kind: string }) {
+    return { sender: new FakeSender(track) };
+  }
+}
 
 beforeEach(() => {
   (globalThis as unknown as { MediaStreamTrack: unknown }).MediaStreamTrack = FakeTrack;
@@ -30,6 +51,9 @@ beforeEach(() => {
   vi.spyOn(window, 'postMessage').mockImplementation(
     ((m: FromInject) => void posted.push(m)) as never,
   );
+  voiceReachesCall = true;
+  (window as unknown as Record<string, unknown>).RTCPeerConnection = FakePeerConnection;
+  (window as unknown as Record<string, unknown>).RTCRtpSender = FakeSender;
   win = window as unknown as W;
   uninstall = installInject(win);
 });
@@ -115,6 +139,102 @@ describe('getUserMedia wrapper', () => {
   });
 });
 
+describe('audio engine state', () => {
+  it('resumes a suspended audio engine at once and again on the first click, so the voice and the mic are not silent', async () => {
+    fake.ctx.state = 'suspended';
+    // This fake only comes back to life when asked to resume *after* a gesture, like Chrome without user activation.
+    let allowed = false;
+    fake.ctx.resume = vi.fn(async () => {
+      fake.ctx.resumed++;
+      if (allowed) fake.ctx.state = 'running';
+    });
+    await gum({ audio: true });
+    expect(fake.ctx.resumed).toBe(1); // tried immediately, still suspended
+
+    allowed = true;
+    window.dispatchEvent(new Event('pointerdown'));
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(fake.ctx.state).toBe('running');
+    const tries = fake.ctx.resumed;
+    window.dispatchEvent(new Event('pointerdown'));
+    expect(fake.ctx.resumed).toBe(tries); // stopped listening once it was running
+  });
+
+  it('does nothing extra when the engine is already running', async () => {
+    await gum({ audio: true });
+    expect(fake.ctx.resumed).toBe(0);
+  });
+});
+
+describe('several microphone streams (Meet asks more than once)', () => {
+  it('speaks into every stream Meet is holding, not only the newest one', async () => {
+    await send(toInject({ type: 'config', enabled: true, voiceMuted: false }));
+    await gum({ audio: true });
+    await gum({ audio: true }); // e.g. the preview before joining, then the call
+    await send(toInject({ type: 'speak', id: 1, audio: new ArrayBuffer(4) }));
+    expect(last('speak-result')).toMatchObject({ id: 1, result: 'done' });
+    expect(fake.ctx.played).toBe(2); // the voice went into both
+  });
+
+  it('keeps the channel until the last stream is stopped, and counts Meet as muted only when all are', async () => {
+    const a = (await gum({ audio: true })).getAudioTracks()[0]!;
+    const b = (await gum({ audio: true })).getAudioTracks()[0]!;
+    a.enabled = false;
+    expect(last('channel')).toMatchObject({ hasChannel: true, micMuted: false });
+    b.enabled = false;
+    expect(last('channel')).toMatchObject({ micMuted: true });
+    a.stop();
+    expect(last('channel')).toMatchObject({ hasChannel: true });
+    b.stop();
+    expect(last('channel')).toMatchObject({ hasChannel: false });
+  });
+});
+
+describe('did the voice reach the call?', () => {
+  const speakOnce = async () => {
+    await send(toInject({ type: 'config', enabled: true, voiceMuted: false }));
+    const track = (await gum({ audio: true })).getAudioTracks()[0]!;
+    return track;
+  };
+
+  it('says yes when the call’s outgoing audio picked the voice up while it played', async () => {
+    const track = await speakOnce();
+    new (
+      window as unknown as { RTCPeerConnection: typeof FakePeerConnection }
+    ).RTCPeerConnection().addTrack(track as unknown as { kind: string });
+    await send(toInject({ type: 'speak', id: 1, audio: new ArrayBuffer(4) }));
+    expect(last('speak-result')).toMatchObject({ result: 'done', sent: true });
+  });
+
+  it('says no when Meet is not sending the voice (the call’s audio did not change)', async () => {
+    voiceReachesCall = false;
+    const track = await speakOnce();
+    new (
+      window as unknown as { RTCPeerConnection: typeof FakePeerConnection }
+    ).RTCPeerConnection().addTrack(track as unknown as { kind: string });
+    await send(toInject({ type: 'speak', id: 2, audio: new ArrayBuffer(4) }));
+    expect(last('speak-result')).toMatchObject({ result: 'done', sent: false });
+  });
+
+  it('says unknown (null) when no call connection was seen, and never throws', async () => {
+    await speakOnce();
+    await send(toInject({ type: 'speak', id: 3, audio: new ArrayBuffer(4) }));
+    expect(last('speak-result')).toMatchObject({ result: 'done', sent: null });
+  });
+
+  it('also recognises connections made with addTransceiver and replaceTrack', async () => {
+    const track = await speakOnce();
+    const W = window as unknown as { RTCPeerConnection: typeof FakePeerConnection };
+    const { sender } = new W.RTCPeerConnection().addTransceiver(
+      track as unknown as { kind: string },
+    );
+    await sender.replaceTrack(track as unknown as { kind: string });
+    await send(toInject({ type: 'speak', id: 4, audio: new ArrayBuffer(4) }));
+    expect(last('speak-result')).toMatchObject({ sent: true });
+  });
+});
+
 describe('message protocol', () => {
   it('plays Audion’s voice into the call only after being enabled', async () => {
     await gum({ audio: true });
@@ -124,7 +244,10 @@ describe('message protocol', () => {
     await send(toInject({ type: 'config', enabled: true, voiceMuted: false }));
     await send(toInject({ type: 'speak', id: 2, audio: new ArrayBuffer(4) }));
     expect(last('speak-result')).toMatchObject({ id: 2, result: 'done' });
-    expect(fake.ctx.played).toBe(1);
+    await send(toInject({ type: 'speak', id: 22, audio: new ArrayBuffer(4), monitor: true }));
+    expect(last('speak-result')).toMatchObject({ id: 22, result: 'done' });
+    expect(fake.ctx.played).toBe(2); // the plain one and the monitored one
+    expect(fake.edges.filter(([, to]) => to === 'speakers')).toHaveLength(1); // only the monitored one is audible here
 
     await send(toInject({ type: 'config', enabled: true, voiceMuted: true }));
     await send(toInject({ type: 'speak', id: 3, audio: new ArrayBuffer(4) }));

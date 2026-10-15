@@ -114,7 +114,7 @@ describe('Voice setup', () => {
     });
     wrap(<VoicePicker />);
     fireEvent.click(screen.getByRole('button', { name: 'Play Aria preview' }));
-    expect(await screen.findByText(/Can’t reach the Audion service/)).toBeTruthy();
+    expect(await screen.findByText(/Can’t reach the Ola service/)).toBeTruthy();
   });
 });
 
@@ -178,6 +178,23 @@ describe('Calibration in Setup', () => {
       (screen.getByRole('button', { name: 'Finish setup' }) as HTMLButtonElement).disabled,
     ).toBe(true);
     vi.useRealTimers();
+  });
+
+  it('lets someone who cannot sign yet skip the sign check and finish setup', async () => {
+    useFreshSettings();
+    stubCamera(true);
+    send.mockResolvedValue({ ok: true, mode: 'live' });
+    const onFinish = vi.fn();
+    wrap(<Setup onBack={() => {}} onFinish={onFinish} />);
+    const finish = screen.getByRole('button', { name: 'Finish setup' }) as HTMLButtonElement;
+    expect(finish.disabled).toBe(true); // still locked until they choose to skip or pass
+
+    fireEvent.click(screen.getByRole('button', { name: 'Skip the sign check' }));
+    expect(finish.disabled).toBe(false);
+    expect(screen.queryByRole('button', { name: 'Skip the sign check' })).toBeNull();
+    expect(screen.getByText(/Sign check skipped/)).toBeTruthy();
+    fireEvent.click(finish);
+    expect(onFinish).toHaveBeenCalledOnce();
   });
 
   it('shows a fix message when the camera is blocked', async () => {

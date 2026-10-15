@@ -30,6 +30,8 @@ export interface AnalyserLike {
 
 export interface MixerContext {
   state: string;
+  /** The device's speakers, used only for the local monitor copy of Ola's voice. */
+  destination: unknown;
   resume(): Promise<void>;
   close(): Promise<void>;
   decodeAudioData(b: ArrayBuffer): Promise<unknown>;
@@ -52,6 +54,7 @@ export class Mixer {
   private enabled = true;
   private muted = false;
   private playing = new Set<BufferSourceLike>();
+  private disposed = false;
 
   constructor(
     private readonly ctx: MixerContext,
@@ -85,8 +88,12 @@ export class Mixer {
     if (this.voiceGain.gain.value === 0) this.stopAll();
   }
 
-  /** Decode and play Audion's voice into the call. Resolves when it has finished. */
-  async play(bytes: ArrayBuffer): Promise<PlayResult> {
+  /**
+   * Decode and play Ola's voice into the call. Resolves when it has finished. With `monitor`, the same audio is
+   * also played on this device's speakers, so the signer hears what the call hears (Meet never plays your own
+   * microphone back to you). Use headphones to avoid the microphone picking it up again.
+   */
+  async play(bytes: ArrayBuffer, opts: { monitor?: boolean } = {}): Promise<PlayResult> {
     if (!this.enabled) return 'disabled';
     if (this.muted) return 'muted';
     if (this.ctx.state === 'suspended') await this.ctx.resume();
@@ -96,10 +103,17 @@ export class Mixer {
     const src = this.ctx.createBufferSource();
     src.buffer = buffer;
     src.connect(this.voiceGain);
+    let monitorGain: GainLike | null = null;
+    if (opts.monitor) {
+      monitorGain = this.ctx.createGain();
+      src.connect(monitorGain);
+      monitorGain.connect(this.ctx.destination);
+    }
     this.playing.add(src);
     return new Promise<PlayResult>((resolve) => {
       src.onended = () => {
         this.playing.delete(src);
+        monitorGain?.disconnect();
         resolve('done');
       };
       src.start();
@@ -126,9 +140,12 @@ export class Mixer {
     this.playing.clear();
   }
 
+  /** Safe to call more than once: Meet can stop the same track twice, and closing a closed context throws. */
   dispose(): void {
+    if (this.disposed) return;
+    this.disposed = true;
     this.stopAll();
     this.micSource?.disconnect();
-    void this.ctx.close();
+    void this.ctx.close().catch(() => {});
   }
 }

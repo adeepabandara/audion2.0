@@ -17,7 +17,7 @@ const shot = async (page: Page, name: string) =>
 
 async function meet(page: Page) {
   await page.goto(FAKE_MEET);
-  await expect(page.getByRole('group', { name: 'Audion' })).toBeVisible();
+  await expect(page.getByRole('group', { name: 'Ola' })).toBeVisible();
   await page.mouse.move(0, 0);
 }
 const on = async (page: Page) => {
@@ -29,8 +29,8 @@ const sign = async (page: Page, sign: string, confidence = 0.9) => {
   await dispatch(page, { type: 'RECOGNISED', sign, confidence, threshold: 0.5 });
 };
 const expand = async (page: Page) => {
-  await page.getByRole('button', { name: 'Expand Audion' }).click();
-  await expect(page.getByRole('region', { name: 'Audion panel' })).toBeVisible();
+  await page.getByRole('button', { name: 'Expand Ola' }).click();
+  await expect(page.getByRole('region', { name: 'Ola panel' })).toBeVisible();
 };
 
 test.describe('onboarding pages', () => {
@@ -81,7 +81,7 @@ test.describe('in the call', () => {
     await dispatch(page, { type: 'COMPOSE_START' });
     await dispatch(page, { type: 'COMPOSED', sentence: 'Please wait, I’ll talk tomorrow.' });
     await dispatch(page, { type: 'SPEAK_START' });
-    await expect(page.getByRole('status', { name: 'Audion caption' })).toBeVisible();
+    await expect(page.getByRole('status', { name: 'Ola caption' })).toBeVisible();
     await shot(page, '06-caption-bar');
   });
 
@@ -107,7 +107,7 @@ test.describe('in the call', () => {
       for (const e of events) await dispatch(page, e);
       await expand(page);
       await expect(
-        page.getByRole('region', { name: 'Audion panel' }).getByText(label).first(),
+        page.getByRole('region', { name: 'Ola panel' }).getByText(label).first(),
       ).toBeVisible();
       await shot(page, `08-error-${name}`);
     });
@@ -141,10 +141,10 @@ test.describe('in the call', () => {
 
   test('11 end-of-call summary', async ({ page }) => {
     await meet(page);
-    await page.getByRole('button', { name: 'Join call' }).click(); // Audion's voice needs the call's microphone
+    await page.getByRole('button', { name: 'Join call' }).click(); // Ola's voice needs the call's microphone
     await expect(page.locator('#selfVideo')).toHaveJSProperty('paused', false);
-    // Switch Audion on for real (not just in the state machine) so its voice channel is enabled.
-    await page.getByRole('group', { name: 'Audion' }).getByRole('switch').click();
+    // Switch Ola on for real (not just in the state machine) so its voice channel is enabled.
+    await page.getByRole('group', { name: 'Ola' }).getByRole('switch').click();
     await waitForState(page, (s) => s.on && s.phase === 'ready');
     await sign(page, 'hello');
     await sign(page, 'please');

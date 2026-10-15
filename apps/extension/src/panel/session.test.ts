@@ -1,9 +1,10 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { LandmarkFrame } from '../lib/landmarks';
 import { makeFrames, makeHand, type Segment } from '../testing/fixtures';
-import { phaseOf, viewOf } from './machine';
+import { pendingChip, phaseOf, viewOf } from './machine';
 import { fakeVoice } from '../testing/fakeSession';
-import { AudionSession, type SessionDeps } from './session';
+import type { ContextUpdate, MeetingContextLike } from './meetingContext';
+import { AudionSession, CONFIRM_UNSURE_SIGNS, type SessionDeps, type TraceEvent } from './session';
 
 afterEach(() => vi.useRealTimers());
 
@@ -17,6 +18,10 @@ function harness(
     trackerStart?: () => Promise<void>;
     compose?: (r: unknown) => unknown;
     speak?: (r: unknown) => unknown;
+    /** The on-device classifier's answer; when given the tracker offers `classify`. */
+    classify?: () => { sign: string; confidence: number; threshold: number } | null;
+    /** A meeting-context tracker; when given the session can follow the meeting. */
+    context?: MeetingContextLike;
   } = {},
 ) {
   const track = { stop: vi.fn() };
@@ -33,6 +38,7 @@ function harness(
   };
   const voice = fakeVoice();
   const chat = vi.fn(async () => 'sent' as 'sent' | 'draft' | 'no-chat' | 'failed');
+  const playLocal = vi.fn(async (_audio: Uint8Array) => {});
   const settingsRef = {
     current: {
       holdTimeMs: 400,
@@ -41,6 +47,11 @@ function harness(
       voiceId: 'aria' as const,
       speed: 1,
       postToChat: false,
+      monitorVoice: true,
+      fastSigns: true,
+      // These tests exercise the optional cloud double-check; the device-only mode has its own tests below.
+      cloudCheck: true,
+      meetingContext: false,
     },
   };
   let recognizeCalls = 0;
@@ -49,6 +60,7 @@ function harness(
     start: vi.fn(opts.trackerStart ?? (async () => {})),
     detect: vi.fn(),
     stop: vi.fn(),
+    ...(opts.classify ? { classify: vi.fn(async () => opts.classify!()) } : {}),
   };
   const deps: SessionDeps = {
     tracker,
@@ -56,7 +68,8 @@ function harness(
     createRecorder: () => recorder,
     send: vi.fn(async (req) => {
       sent.push(req);
-      if (req.type === 'api/health') return { ok: true, mode: 'mock', confidenceThreshold: 0.5 };
+      if (req.type === 'api/health')
+        return { ok: true, mode: 'mock', confidenceThreshold: 0.5, modelId: 'mock' };
       if (req.type === 'api/compose')
         return opts.compose?.(req) ?? { ok: true, sentence: 'Hello, please wait.' };
       if (req.type === 'api/speak')
@@ -74,7 +87,9 @@ function harness(
       )(++recognizeCalls);
     }),
     settings: () => settingsRef.current,
+    ...(opts.context ? { context: opts.context } : {}),
     voice,
+    playLocal,
     chat,
     luminance: opts.luminance ?? (() => 120),
     now: () => 0,
@@ -94,6 +109,7 @@ function harness(
   };
   return {
     session,
+    playLocal,
     deps,
     tracker,
     recorder,
@@ -114,6 +130,24 @@ const ONE_SIGN: Segment[] = [
 ];
 
 describe('AudionSession', () => {
+  it('accepts an unsure sign as it is while "Did you mean" is switched off', async () => {
+    expect(CONFIRM_UNSURE_SIGNS).toBe(false);
+    const h = harness({
+      recognize: () => ({
+        ok: true,
+        sign: 'hello',
+        confidence: 0.1,
+        alternatives: [],
+        latencyMs: 1,
+      }),
+    });
+    await h.session.turnOn();
+    await h.feed(ONE_SIGN);
+    const s = h.session.getState();
+    expect(s.chips).toMatchObject([{ sign: 'hello', state: 'normal' }]);
+    expect(pendingChip(s)).toBeUndefined();
+  });
+
   it('signing in front of the camera produces a chip (camera -> tracker -> segmenter -> recorder -> API)', async () => {
     const h = harness();
     await h.session.turnOn();
@@ -136,6 +170,40 @@ describe('AudionSession', () => {
     expect(phaseOf(s)).toBe('seeing'); // hands still in view
   });
 
+  it('learns the recognition model from the health check and from each answer', async () => {
+    const h = harness({
+      recognize: () => ({
+        ok: true,
+        sign: 'hello',
+        confidence: 0.9,
+        alternatives: [],
+        latencyMs: 1,
+        modelId: 'tuned:42',
+      }),
+    });
+    await h.session.turnOn();
+    await flush();
+    expect(h.session.getState().modelId).toBe('mock'); // from /healthz
+    await h.feed(ONE_SIGN);
+    expect(h.session.getState().modelId).toBe('tuned:42'); // from the answer
+  });
+
+  it('tells the signer when the server’s daily call cap is reached, and does not retry', async () => {
+    const h = harness({
+      recognize: () => ({
+        ok: false,
+        error: { code: 'DAILY_CAP_REACHED', message: 'cap', retryable: false },
+      }),
+    });
+    await h.session.turnOn();
+    await h.feed(ONE_SIGN);
+    const s = h.session.getState();
+    expect(s.notice).toMatch(/daily recognition limit/);
+    expect(s.chips).toEqual([]);
+    expect(s.problems).toContain('notRecognised');
+    expect(s.problems).not.toContain('offline'); // a cap is not a connection problem
+  });
+
   it('recognises several signs in order', async () => {
     const signs = ['hello', 'please', 'wait'];
     const h = harness({
@@ -156,41 +224,44 @@ describe('AudionSession', () => {
     expect(h.session.getState().chips.map((c) => c.sign)).toEqual(signs);
   });
 
-  it('low-confidence answers wait for confirmation; Yes confirms, Try again removes', async () => {
-    const h = harness({
-      recognize: () => ({
-        ok: true,
+  it.runIf(CONFIRM_UNSURE_SIGNS)(
+    'low-confidence answers wait for confirmation; Yes confirms, Try again removes',
+    async () => {
+      const h = harness({
+        recognize: () => ({
+          ok: true,
+          sign: 'tomorrow',
+          confidence: 0.3,
+          alternatives: [],
+          latencyMs: 1,
+        }),
+      });
+      await h.session.turnOn();
+      await h.feed(ONE_SIGN);
+      expect(h.session.getState().chips[0]).toMatchObject({
         sign: 'tomorrow',
-        confidence: 0.3,
-        alternatives: [],
-        latencyMs: 1,
-      }),
-    });
-    await h.session.turnOn();
-    await h.feed(ONE_SIGN);
-    expect(h.session.getState().chips[0]).toMatchObject({
-      sign: 'tomorrow',
-      state: 'lowConfidence',
-    });
-    h.session.confirmYes();
-    expect(h.session.getState().chips[0]!.state).toBe('confirmed');
+        state: 'lowConfidence',
+      });
+      h.session.confirmYes();
+      expect(h.session.getState().chips[0]!.state).toBe('confirmed');
 
-    const h2 = harness({
-      recognize: () => ({
-        ok: true,
-        sign: 'tomorrow',
-        confidence: 0.3,
-        alternatives: [],
-        latencyMs: 1,
-      }),
-    });
-    await h2.session.turnOn();
-    await h2.feed(ONE_SIGN);
-    h2.session.confirmRetry();
-    expect(h2.session.getState().chips).toEqual([]);
-  });
+      const h2 = harness({
+        recognize: () => ({
+          ok: true,
+          sign: 'tomorrow',
+          confidence: 0.3,
+          alternatives: [],
+          latencyMs: 1,
+        }),
+      });
+      await h2.session.turnOn();
+      await h2.feed(ONE_SIGN);
+      h2.session.confirmRetry();
+      expect(h2.session.getState().chips).toEqual([]);
+    },
+  );
 
-  it('uses the confidence threshold the API reports', async () => {
+  it.runIf(CONFIRM_UNSURE_SIGNS)('uses the confidence threshold the API reports', async () => {
     const h = harness({
       recognize: () => ({
         ok: true,
@@ -383,6 +454,78 @@ describe('AudionSession: compose and speak', () => {
     });
   });
 
+  it('follows the delivery reports while on, and stops listening when switched off', async () => {
+    const h = harness();
+    await h.session.turnOn();
+    h.voice.emitDelivery(false);
+    expect(h.session.getState().delivered).toBe(false);
+    h.voice.emitDelivery(true);
+    expect(h.session.getState().delivered).toBe(true);
+    h.session.turnOff();
+    h.voice.emitDelivery(false);
+    expect(h.session.getState().delivered).toBeNull(); // off: nothing listens any more
+  });
+
+  it('learns on switch-on whether the call has a voice channel, and follows it as Meet changes the mic', async () => {
+    const connected = harness();
+    await connected.session.turnOn();
+    await flush();
+    expect(connected.session.getState().callAudio).toBe('connected');
+    connected.voice.emitChannel({ hasChannel: false, micMuted: false }); // Meet stopped the mic track
+    expect(connected.session.getState().callAudio).toBe('none');
+    connected.voice.emitChannel({ hasChannel: true, micMuted: true });
+    expect(connected.session.getState()).toMatchObject({ callAudio: 'connected', micMuted: true });
+
+    const none = harness();
+    none.voice.probe = async () => ({ hasChannel: false, micMuted: false, peak: 0 });
+    await none.session.turnOn();
+    await flush();
+    expect(none.session.getState().callAudio).toBe('none');
+  });
+
+  it('asks the call channel to also play Ola’s voice locally, following the monitor setting', async () => {
+    const on = harness();
+    await on.session.turnOn();
+    await on.feed(signAndPause);
+    await flush();
+    expect(on.voice.speak).toHaveBeenCalledWith(expect.anything(), { monitor: true });
+
+    const off = harness();
+    off.settings.monitorVoice = false;
+    await off.session.turnOn();
+    await off.feed(signAndPause);
+    await flush();
+    expect(off.voice.speak).toHaveBeenCalledWith(expect.anything(), { monitor: false });
+  });
+
+  it('with no call channel (e.g. Meet is muted) the signer still hears the sentence locally', async () => {
+    const h = harness();
+    h.voice.result = 'no-channel';
+    await h.session.turnOn();
+    await h.feed(signAndPause);
+    await flush();
+    expect(h.playLocal).toHaveBeenCalledTimes(1);
+    expect(new TextDecoder().decode(h.playLocal.mock.calls[0]![0])).toBe('RIFF-audio');
+    // The call still did not get it, and the panel still says the voice is not connected to the call.
+    expect(h.session.getState().problems).toContain('voiceUnavailable');
+  });
+
+  it('does not play locally when the setting is off, or when the call channel took the audio', async () => {
+    const off = harness();
+    off.voice.result = 'no-channel';
+    off.settings.monitorVoice = false;
+    await off.session.turnOn();
+    await off.feed(signAndPause);
+    await flush();
+    expect(off.playLocal).not.toHaveBeenCalled();
+
+    const ok = harness(); // channel works: the mixer makes the local copy itself, so no second one
+    await ok.session.turnOn();
+    await ok.feed(signAndPause);
+    await flush();
+    expect(ok.playLocal).not.toHaveBeenCalled();
+  });
+
   it('confirm-first: stops at the sentence; Speak button speaks it; Cancel drops it', async () => {
     const h = harness();
     h.settings.speakMode = 'confirm';
@@ -414,28 +557,31 @@ describe('AudionSession: compose and speak', () => {
     expect(h.voice.spoken).toHaveLength(1);
   });
 
-  it('waits for a low-confidence sign to be confirmed before composing', async () => {
-    const h = harness({
-      recognize: () => ({
-        ok: true,
-        sign: 'tomorrow',
-        confidence: 0.3,
-        alternatives: [],
-        latencyMs: 1,
-      }),
-    });
-    await h.session.turnOn();
-    await h.feed(signAndPause);
-    await flush();
-    expect(h.sent.some((r) => (r as { type: string }).type === 'api/compose')).toBe(false);
-    expect(h.session.getState().chips[0]!.state).toBe('lowConfidence');
+  it.runIf(CONFIRM_UNSURE_SIGNS)(
+    'waits for a low-confidence sign to be confirmed before composing',
+    async () => {
+      const h = harness({
+        recognize: () => ({
+          ok: true,
+          sign: 'tomorrow',
+          confidence: 0.3,
+          alternatives: [],
+          latencyMs: 1,
+        }),
+      });
+      await h.session.turnOn();
+      await h.feed(signAndPause);
+      await flush();
+      expect(h.sent.some((r) => (r as { type: string }).type === 'api/compose')).toBe(false);
+      expect(h.session.getState().chips[0]!.state).toBe('lowConfidence');
 
-    h.session.confirmYes();
-    await flush();
-    await flush();
-    expect(h.sent.some((r) => (r as { type: string }).type === 'api/compose')).toBe(true);
-    expect(h.voice.spoken).toHaveLength(1);
-  });
+      h.session.confirmYes();
+      await flush();
+      await flush();
+      expect(h.sent.some((r) => (r as { type: string }).type === 'api/compose')).toBe(true);
+      expect(h.voice.spoken).toHaveLength(1);
+    },
+  );
 
   it('waits for clips still being recognised, then composes them together', async () => {
     let release!: (v: unknown) => void;
@@ -561,5 +707,321 @@ describe('AudionSession: compose and speak', () => {
     expect(h.session.getState().caption).not.toBeNull();
     await vi.advanceTimersByTimeAsync(5100);
     expect(h.session.getState().caption).toBeNull();
+  });
+
+  describe('fast signs (on-device classifier, cloud checks)', () => {
+    const device =
+      (sign: string, confidence = 0.95) =>
+      () => ({ sign, confidence, threshold: 0.8 });
+    const cloud = (sign: string) => () => ({
+      ok: true,
+      sign,
+      confidence: 0.9,
+      alternatives: [],
+      latencyMs: 1,
+    });
+
+    it('a confident device answer becomes the chip, and the cloud agreeing just confirms it', async () => {
+      const h = harness({ classify: device('hello'), recognize: cloud('hello') });
+      await h.session.turnOn();
+      await h.feed(ONE_SIGN);
+      const [chip] = h.session.getState().chips;
+      expect(chip).toMatchObject({ sign: 'hello', source: 'device', checking: false });
+      expect(chip?.corrected).toBeUndefined();
+      expect(h.session.getState().inFlight).toBe(0);
+      // the clip still went to the cloud, as a check
+      expect(h.sent.filter((r) => (r as { type: string }).type === 'api/recognize')).toHaveLength(
+        1,
+      );
+    });
+
+    it('shows the device answer before the cloud has replied', async () => {
+      let release: (v: unknown) => void = () => {};
+      const slow = new Promise((r) => (release = r));
+      const h = harness({
+        classify: device('yes'),
+        recognize: (() => slow) as unknown as () => unknown,
+      });
+      await h.session.turnOn();
+      await h.feed(ONE_SIGN);
+      expect(h.session.getState().chips).toMatchObject([{ sign: 'yes', checking: true }]);
+      release(cloud('yes')());
+      await new Promise((r) => setTimeout(r, 0));
+      await flush();
+      expect(h.session.getState().chips[0]?.checking).toBe(false);
+    });
+
+    it('corrects the chip, and says so, when the cloud disagrees', async () => {
+      const h = harness({ classify: device('yes'), recognize: cloud('no') });
+      await h.session.turnOn();
+      await h.feed(ONE_SIGN);
+      const s = h.session.getState();
+      expect(s.chips).toMatchObject([{ sign: 'no', checking: false, corrected: { was: 'yes' } }]);
+      expect(s.notice).toMatch(/changed .yes. to .no./);
+    });
+
+    it('keeps the device answer when the cloud cannot tell', async () => {
+      const h = harness({ classify: device('yes'), recognize: cloud('unknown') });
+      await h.session.turnOn();
+      await h.feed(ONE_SIGN);
+      expect(h.session.getState().chips).toMatchObject([{ sign: 'yes', checking: false }]);
+    });
+
+    it('waits for the cloud when the device is not confident enough', async () => {
+      const h = harness({ classify: device('yes', 0.5), recognize: cloud('hello') });
+      await h.session.turnOn();
+      await h.feed(ONE_SIGN);
+      const [chip] = h.session.getState().chips;
+      expect(chip).toMatchObject({ sign: 'hello' });
+      expect(chip?.source).toBeUndefined();
+    });
+
+    it('does not use the device when the setting is off', async () => {
+      const h = harness({ classify: device('yes'), recognize: cloud('hello') });
+      h.settings.fastSigns = false;
+      await h.session.turnOn();
+      await h.feed(ONE_SIGN);
+      expect(h.tracker.classify).not.toHaveBeenCalled();
+      expect(h.session.getState().chips).toMatchObject([{ sign: 'hello' }]);
+    });
+  });
+
+  describe('pipeline trace (which step did what)', () => {
+    const cloud = (sign: string) => () => ({
+      ok: true,
+      sign,
+      confidence: 0.9,
+      alternatives: [],
+      latencyMs: 2900,
+    });
+
+    it('reports the device answer, then the cloud check, then the sentence and the voice', async () => {
+      const h = harness({
+        classify: () => ({ sign: 'yes', confidence: 0.95, threshold: 0.8 }),
+        recognize: cloud('no'),
+        compose: () => ({ ok: true, sentence: 'No.', writer: 'Gemma, on this device' }),
+      });
+      const events: TraceEvent[] = [];
+      h.session.onTrace((e) => events.push(e));
+      await h.session.turnOn();
+      await h.feed(ONE_SIGN);
+      await h.session.speakNow();
+      await flush();
+      expect(events.map((e) => e.kind)).toEqual(['device', 'cloud', 'sentence', 'voice']);
+      expect(events[0]).toMatchObject({ kind: 'device', sign: 'yes', confidence: 0.95 });
+      expect(events[1]).toMatchObject({
+        kind: 'cloud',
+        role: 'check',
+        sign: 'no',
+        deviceSign: 'yes',
+        ms: 2900,
+      });
+      expect(events[2]).toMatchObject({ kind: 'sentence', writer: 'Gemma, on this device' });
+      expect(events[3]).toMatchObject({ kind: 'voice', voiceId: 'aria' });
+    });
+
+    it('says the device was unsure and the cloud answered', async () => {
+      const h = harness({
+        classify: () => ({ sign: 'yes', confidence: 0.4, threshold: 0.8 }),
+        recognize: cloud('hello'),
+      });
+      const events: TraceEvent[] = [];
+      h.session.onTrace((e) => events.push(e));
+      await h.session.turnOn();
+      await h.feed(ONE_SIGN);
+      expect(events.map((e) => e.kind)).toEqual(['device-unsure', 'cloud']);
+      expect(events[1]).toMatchObject({ role: 'answer', sign: 'hello' });
+    });
+  });
+
+  describe('device only (no cloud recognition call)', () => {
+    const device = (sign: string, confidence: number) => () => ({
+      sign,
+      confidence,
+      threshold: 0.8,
+    });
+    const recognizeCalls = (h: ReturnType<typeof harness>) =>
+      h.sent.filter((r) => (r as { type: string }).type === 'api/recognize');
+
+    it('names a confident sign on the device and never calls the cloud', async () => {
+      const h = harness({ classify: device('yes', 0.95) });
+      h.settings.cloudCheck = false;
+      const events: TraceEvent[] = [];
+      h.session.onTrace((e) => events.push(e));
+      await h.session.turnOn();
+      await h.feed(ONE_SIGN);
+      expect(h.session.getState().chips).toMatchObject([
+        { sign: 'yes', source: 'device', checking: false },
+      ]);
+      expect(h.session.getState().inFlight).toBe(0);
+      expect(recognizeCalls(h)).toHaveLength(0);
+      expect(events.map((e) => e.kind)).toEqual(['device']);
+    });
+
+    it('accepts a less sure guess down to 50 %, still with no cloud call', async () => {
+      const h = harness({ classify: device('not', 0.62) });
+      h.settings.cloudCheck = false;
+      await h.session.turnOn();
+      await h.feed(ONE_SIGN);
+      expect(h.session.getState().chips).toMatchObject([{ sign: 'not', checking: false }]);
+      expect(recognizeCalls(h)).toHaveLength(0);
+    });
+
+    it('asks the signer to sign again below 50 %, with no chip and no cloud call', async () => {
+      const h = harness({ classify: device('not', 0.3) });
+      h.settings.cloudCheck = false;
+      const events: TraceEvent[] = [];
+      h.session.onTrace((e) => events.push(e));
+      await h.session.turnOn();
+      await h.feed(ONE_SIGN);
+      const s = h.session.getState();
+      expect(s.chips).toEqual([]);
+      expect(s.problems).toContain('notRecognised');
+      expect(s.inFlight).toBe(0);
+      expect(recognizeCalls(h)).toHaveLength(0);
+      expect(events[0]).toMatchObject({ kind: 'device-unsure', then: 'retry', threshold: 0.5 });
+    });
+
+    it('falls back to the cloud when the on-device model gives no answer at all', async () => {
+      const h = harness({
+        classify: () => null,
+        recognize: () => ({
+          ok: true,
+          sign: 'hello',
+          confidence: 0.9,
+          alternatives: [],
+          latencyMs: 1,
+        }),
+      });
+      h.settings.cloudCheck = false;
+      await h.session.turnOn();
+      await h.feed(ONE_SIGN);
+      expect(h.session.getState().chips).toMatchObject([{ sign: 'hello' }]);
+      expect(recognizeCalls(h)).toHaveLength(1);
+    });
+  });
+
+  describe('meeting context (opt-in)', () => {
+    /** A stand-in tracker: records start/stop and lets the test push summaries. */
+    function fakeContext(initial: string | null = null) {
+      let summary = initial;
+      let state: ContextUpdate['state'] = 'off';
+      const changes = new Set<(u: ContextUpdate) => void>();
+      const refreshes = new Set<(i: { summary: string; ms: number; chars: number }) => void>();
+      const emit = () => changes.forEach((l) => l({ state, summary }));
+      return {
+        start: vi.fn(() => {
+          state = 'waiting';
+          emit();
+        }),
+        stop: vi.fn(() => {
+          state = 'off';
+          summary = null;
+          emit();
+        }),
+        summary: () => summary,
+        onChange: (l: (u: ContextUpdate) => void) => (changes.add(l), () => changes.delete(l)),
+        onRefreshed: (l: (i: { summary: string; ms: number; chars: number }) => void) => (
+          refreshes.add(l), () => refreshes.delete(l)
+        ),
+        learn(text: string) {
+          summary = text;
+          state = 'following';
+          emit();
+          refreshes.forEach((l) => l({ summary: text, ms: 1200, chars: 300 }));
+        },
+      } satisfies MeetingContextLike & Record<string, unknown>;
+    }
+    const composeRequests = (h: ReturnType<typeof harness>) =>
+      h.sent.filter((r) => (r as { type: string }).type === 'api/compose') as Array<{
+        signs: string[];
+        context?: string;
+      }>;
+
+    it('starts following when Ola turns on with the setting on, and forgets when it turns off', async () => {
+      const context = fakeContext();
+      const h = harness({ context });
+      h.settings.meetingContext = true;
+      await h.session.turnOn();
+      expect(context.start).toHaveBeenCalledTimes(1);
+      expect(h.session.getState().context).toEqual({ state: 'waiting', summary: null });
+      context.learn('Planning the demo for Friday.');
+      expect(h.session.getState().context).toEqual({
+        state: 'following',
+        summary: 'Planning the demo for Friday.',
+      });
+      h.session.turnOff();
+      expect(context.stop).toHaveBeenCalled();
+      expect(h.session.getState().context).toEqual({ state: 'off', summary: null });
+    });
+
+    it('does not follow the meeting while the setting is off', async () => {
+      const context = fakeContext();
+      const h = harness({ context });
+      await h.session.turnOn();
+      expect(context.start).not.toHaveBeenCalled();
+      expect(h.session.getState().context.state).toBe('off');
+    });
+
+    it('starts and stops when the setting is switched while Ola is on', async () => {
+      const context = fakeContext();
+      const h = harness({ context });
+      await h.session.turnOn();
+      h.session.setMeetingContext(true);
+      expect(context.start).toHaveBeenCalledTimes(1);
+      h.session.setMeetingContext(false);
+      expect(context.stop).toHaveBeenCalled();
+    });
+
+    it('does not follow while Ola is off, whatever the setting says', () => {
+      const context = fakeContext();
+      const h = harness({ context });
+      h.session.setMeetingContext(true);
+      expect(context.start).not.toHaveBeenCalled();
+    });
+
+    it('sends the meeting summary with the sentence request, only when the setting is on', async () => {
+      const context = fakeContext('Planning the demo for Friday at three.');
+      const on = harness({ context });
+      on.settings.meetingContext = true;
+      await on.session.turnOn();
+      await on.feed(ONE_SIGN);
+      await on.session.speakNow();
+      await flush();
+      expect(composeRequests(on)[0]).toMatchObject({
+        context: 'Planning the demo for Friday at three.',
+      });
+
+      const off = harness({ context: fakeContext('Planning the demo for Friday at three.') });
+      await off.session.turnOn();
+      await off.feed(ONE_SIGN);
+      await off.session.speakNow();
+      await flush();
+      expect(composeRequests(off)[0]).toBeDefined();
+      expect(composeRequests(off)[0]).not.toHaveProperty('context');
+    });
+
+    it('sends no context when there is no summary yet', async () => {
+      const h = harness({ context: fakeContext(null) });
+      h.settings.meetingContext = true;
+      await h.session.turnOn();
+      await h.feed(ONE_SIGN);
+      await h.session.speakNow();
+      await flush();
+      expect(composeRequests(h)[0]).not.toHaveProperty('context');
+    });
+
+    it('reports each summary refresh in the pipeline trace', async () => {
+      const context = fakeContext();
+      const h = harness({ context });
+      h.settings.meetingContext = true;
+      const events: TraceEvent[] = [];
+      h.session.onTrace((e) => events.push(e));
+      await h.session.turnOn();
+      context.learn('Planning the demo.');
+      expect(events).toEqual([
+        { kind: 'context', summary: 'Planning the demo.', ms: 1200, chars: 300 },
+      ]);
+    });
   });
 });

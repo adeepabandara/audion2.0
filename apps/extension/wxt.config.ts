@@ -28,6 +28,7 @@ export default defineConfig({
       'import.meta.env.VITE_API_URL': JSON.stringify(apiUrl),
       'process.env.AUDION_FAKE_MEET': JSON.stringify(process.env.AUDION_FAKE_MEET ?? ''),
       'process.env.AUDION_E2E': JSON.stringify(process.env.AUDION_E2E ?? ''),
+      'process.env.AUDION_WEB': JSON.stringify(''),
     },
   }),
   hooks: {
@@ -40,7 +41,7 @@ export default defineConfig({
   manifest: {
     // Optional stable extension ID for local/dev builds (see docs/extension-id.md). Never set for a Web Store upload.
     ...(process.env.EXTENSION_KEY ? { key: process.env.EXTENSION_KEY } : {}),
-    name: 'Audion',
+    name: 'Ola by Audion',
     description: 'Sign. Be heard in any Google Meet call.',
     permissions: ['storage'],
     host_permissions: [`${apiOrigin}/*`],

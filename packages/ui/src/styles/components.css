@@ -144,6 +144,15 @@ button.au-chip {
   color: var(--au-text);
   font-weight: 600;
 }
+.au-pill__dot {
+  flex: none;
+  width: 10px;
+  height: 10px;
+  margin: 0 4px;
+  border-radius: 50%;
+  background: #dc2626;
+  box-shadow: 0 0 0 3px rgb(220 38 38 / 25%);
+}
 .au-pill--ok .au-icon {
   color: var(--au-success);
 }
@@ -170,7 +179,7 @@ button.au-chip {
 }
 .au-switch {
   position: relative;
-  width: 52px;
+  width: 72px;
   height: 32px;
   border-radius: 999px;
   border: 2px solid var(--au-border);
@@ -200,7 +209,7 @@ button.au-chip {
   transition: transform 120ms;
 }
 .au-switch[data-state='checked'] .au-switch__thumb {
-  transform: translateX(22px);
+  transform: translateX(42px);
   background: #fff;
   color: var(--au-primary);
 }
@@ -210,10 +219,26 @@ button.au-chip {
 .au-switch[data-state='checked'] .au-switch__thumb .au-icon {
   opacity: 1;
 }
-.au-toggle__state {
-  min-width: 2.5ch;
-  font-weight: 600;
+/* ON / OFF written inside the switch: on the right while off (thumb on the left), on the left while on. */
+.au-switch__text {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  display: flex;
+  align-items: center;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  line-height: 1;
+  pointer-events: none;
+}
+.au-switch[data-state='unchecked'] .au-switch__text {
+  right: 10px;
   color: var(--au-text-2);
+}
+.au-switch[data-state='checked'] .au-switch__text {
+  left: 11px;
+  color: var(--au-on-primary);
 }
 
 /* Segmented */
@@ -465,8 +490,53 @@ button.au-chip {
 .au-wordmark {
   display: inline-flex;
   align-items: center;
-  gap: 8px;
-  font-weight: 800;
-  font-size: var(--au-text-lg);
+  line-height: 0;
   color: var(--au-text);
+}
+
+/* Wordmark intro: each letter's outline draws itself in the highlight colour, then fills in solid; "by audion"
+   fades in last. About 2.3 s in total; the onboarding page holds it for 3 s. Paths use pathLength=1 so the dash
+   values below are fractions of each path. */
+.au-wordmark--animate .au-wm-o,
+.au-wordmark--animate .au-wm-l,
+.au-wordmark--animate .au-wm-a {
+  fill-opacity: 0;
+  stroke: var(--au-highlight);
+  stroke-width: 5;
+  stroke-linejoin: round;
+  stroke-dasharray: 1;
+  stroke-dashoffset: 1;
+  animation:
+    au-wm-draw 1600ms cubic-bezier(0.65, 0, 0.35, 1) forwards,
+    au-wm-fill 800ms cubic-bezier(0.4, 0, 0.2, 1) forwards;
+  animation-delay: var(--au-wm-delay, 0ms), calc(var(--au-wm-delay, 0ms) + 1300ms);
+}
+.au-wordmark--animate .au-wm-o {
+  --au-wm-delay: 0ms;
+}
+.au-wordmark--animate .au-wm-l {
+  --au-wm-delay: 250ms;
+}
+.au-wordmark--animate .au-wm-a {
+  --au-wm-delay: 500ms;
+}
+.au-wordmark--animate .au-wm-by {
+  opacity: 0;
+  animation: au-wm-fade 700ms cubic-bezier(0.4, 0, 0.2, 1) 2000ms forwards;
+}
+@keyframes au-wm-draw {
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+@keyframes au-wm-fill {
+  to {
+    fill-opacity: 1;
+    stroke-opacity: 0;
+  }
+}
+@keyframes au-wm-fade {
+  to {
+    opacity: 1;
+  }
 }

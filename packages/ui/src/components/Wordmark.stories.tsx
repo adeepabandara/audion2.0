@@ -6,3 +6,4 @@ export default meta;
 type Story = StoryObj<typeof meta>;
 export const Full: Story = {};
 export const MarkOnly: Story = { args: { markOnly: true } };
+export const Animated: Story = { args: { animate: true, size: 120 } };

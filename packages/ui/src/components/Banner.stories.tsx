@@ -7,7 +7,11 @@ export default meta;
 type Story = StoryObj<typeof meta>;
 
 export const Info: Story = {
-  args: { tone: 'info', children: 'Reload this Meet tab once so Audion can speak in the call.' },
+  args: {
+    tone: 'info',
+    children:
+      'Unmute your Meet microphone, or reload this Meet tab once, so Ola can speak in the call.',
+  },
 };
 export const Warning: Story = {
   args: { tone: 'warning', title: 'Poor lighting. ', children: 'Move to a brighter spot.' },
@@ -16,7 +20,7 @@ export const ErrorWithAction: Story = {
   args: {
     tone: 'error',
     title: 'Camera blocked. ',
-    children: 'Allow camera access to use Audion.',
+    children: 'Allow camera access to use Ola.',
     action: <Button variant="secondary">Fix permissions</Button>,
   },
 };

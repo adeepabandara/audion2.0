@@ -11,7 +11,7 @@ const DESCRIPTIONS: Record<VoiceId, string> = {
   david: 'Calm, male, US English',
   miles: 'Deep, male, US English',
 };
-export const SAMPLE_LINE = 'Hello, I’m signing with Audion. Please wait a moment.';
+export const SAMPLE_LINE = 'Hello, I’m signing with Ola. Please wait a moment.';
 
 export function VoicePicker({ heading = true }: { heading?: boolean }) {
   const { useStore } = getSettingsStore();
@@ -33,7 +33,7 @@ export function VoicePicker({ heading = true }: { heading?: boolean }) {
       setPlaying(null);
       return setError(
         res.error.code === 'NETWORK'
-          ? 'Can’t reach the Audion service. Check that it is running and try again.'
+          ? 'Can’t reach the Ola service. Check that it is running and try again.'
           : res.error.message,
       );
     }

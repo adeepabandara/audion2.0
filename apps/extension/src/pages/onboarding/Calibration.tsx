@@ -15,7 +15,7 @@ type Phase = 'idle' | 'countdown' | 'recording' | 'checking' | 'success' | 'retr
 
 const CAMERA_TEXT: Record<CameraProblem, string> = {
   blocked:
-    'Camera blocked. Allow camera access for Audion in Chrome’s address bar, then reload this page.',
+    'Camera blocked. Allow camera access for Ola in Chrome’s address bar, then reload this page.',
   busy: 'Your camera is in use by another app. Close it and reload this page.',
   missing: 'No camera found. Plug one in and reload this page.',
   unknown: 'Couldn’t start the camera. Reload this page and try again.',
@@ -159,7 +159,7 @@ export function Calibration({ onPassed }: CalibrationProps) {
           </p>
           {phase === 'error' && (
             <Banner tone="error">
-              Can’t reach the Audion service. Check that it is running, then try again.
+              Can’t reach the Ola service. Check that it is running, then try again.
             </Banner>
           )}
           {phase === 'retry' && (

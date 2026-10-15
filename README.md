@@ -39,7 +39,7 @@ words (and is checked so it cannot add content words that were not signed).
 
 ## Try it locally (no Google Cloud needed)
 
-Needs Node 20+ and pnpm.
+Needs Node 22.13+ and pnpm.
 
 ```bash
 pnpm install
