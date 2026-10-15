@@ -14,6 +14,20 @@ export const settingsSchema = z.object({
   captionPosition: z.enum(['bottom', 'top']).catch('bottom'),
   language: z.literal('en').catch('en'),
   postToChat: z.boolean().catch(false),
+  /** Also play Ola's voice on this device's speakers, so the signer hears what the call hears. */
+  monitorVoice: z.boolean().catch(true),
+  /** Name confident signs on this device in milliseconds; the cloud model still checks them and corrects mistakes. */
+  fastSigns: z.boolean().catch(true),
+  /**
+   * Also send each sign's clip to the cloud model (Gemini) to double-check the on-device answer. Off by default: the
+   * on-device classifier decides on its own, with no cloud call and no waiting for one.
+   */
+  cloudCheck: z.boolean().catch(false),
+  /**
+   * Read Meet's live captions, have Gemini keep a short summary of the meeting, and use it to word sentences better.
+   * Off by default: the captions are other people's words, so they are sent to Google Cloud only if this is turned on.
+   */
+  meetingContext: z.boolean().catch(false),
   theme: z.enum(['system', 'light', 'dark']).catch('system'),
   /** How long hands must rest before a sign clip ends. */
   holdTimeMs: z.number().int().min(200).max(1500).catch(400),

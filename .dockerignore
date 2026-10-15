@@ -11,5 +11,6 @@
 *.mp4
 *.jsonl
 tools
-apps/extension
-packages/ui
+**/dist-web
+# The small looped videos of the other people in the web demo's call window (not sign clips).
+!apps/extension/web/public/call/*.mp4

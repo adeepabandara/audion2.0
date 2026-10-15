@@ -1,5 +1,6 @@
 import {
   composeRequestSchema,
+  contextRequestSchema,
   feedbackRequestSchema,
   MAX_CLIP_BYTES,
   MAX_CLIP_SECONDS,
@@ -12,6 +13,7 @@ import {
 import cors from '@fastify/cors';
 import helmet from '@fastify/helmet';
 import multipart from '@fastify/multipart';
+import fastifyStatic from '@fastify/static';
 import Fastify, { type FastifyInstance, type FastifyRequest } from 'fastify';
 import { ZodError } from 'zod';
 import { issueToken, verifyToken } from './auth.js';
@@ -19,7 +21,7 @@ import type { Config } from './config.js';
 import { AppError } from './errors.js';
 import { RateLimiter } from './rateLimit.js';
 import { isGroundedSentence } from './services/composeGuard.js';
-import { MockComposer } from './services/mock/composer.js';
+import { composeByRules, MockComposer } from './services/mock/composer.js';
 import type { Services } from './services/types.js';
 
 export interface BuildOptions {
@@ -69,8 +71,16 @@ export async function buildApp(
   app.addHook('onClose', async () => limiter.close());
 
   const allowAll = config.allowedOrigins.includes('*');
-  const originAllowed = (origin: string | undefined) =>
-    !origin || allowAll || config.allowedOrigins.includes(origin);
+  // The public web demo is served by this same service, so its requests carry our own origin.
+  const sameOrigin = (origin: string, host: string | undefined) => {
+    try {
+      return config.webDir !== undefined && host !== undefined && new URL(origin).host === host;
+    } catch {
+      return false;
+    }
+  };
+  const originAllowed = (origin: string | undefined, host?: string) =>
+    !origin || allowAll || config.allowedOrigins.includes(origin) || sameOrigin(origin, host);
 
   await app.register(helmet, { contentSecurityPolicy: false });
   await app.register(cors, {
@@ -97,15 +107,19 @@ export async function buildApp(
     }
     return reply.status(appErr.status).send(appErr.toResponse());
   });
+  if (config.webDir) {
+    await app.register(fastifyStatic, { root: config.webDir, maxAge: '1h' });
+  }
   app.setNotFoundHandler((_req, reply) =>
     reply.status(400).send(new AppError('BAD_REQUEST', 'Unknown endpoint.').toResponse()),
   );
 
   app.addHook('onRequest', async (req) => {
-    if (!originAllowed(req.headers.origin)) {
+    if (!originAllowed(req.headers.origin, req.headers.host)) {
       throw new AppError('UNAUTHENTICATED', 'Origin not allowed.');
     }
-    if (req.url !== '/healthz') limiter.check(`ip:${req.ip}`, config.limits.perIp);
+    // Only API calls count against the limit; the web demo's files are static.
+    if (req.url.startsWith('/v1/')) limiter.check(`ip:${req.ip}`, config.limits.perIp);
   });
 
   const authed = async (req: FastifyRequest) => {
@@ -119,6 +133,8 @@ export async function buildApp(
       ok: true,
       mode: services.mode,
       confidenceThreshold: config.confidenceThreshold,
+      modelId: services.recognizer.modelId,
+      voices: services.voices,
     }),
   );
 
@@ -150,11 +166,28 @@ export async function buildApp(
     try {
       result = await services.recognizer.recognize({ clip, mime });
     } catch (e) {
-      req.log.error({ errCode: (e as { code?: string }).code }, 'recognizer failed');
+      // The daily cap is a deliberate refusal with its own code; anything else is the model being unavailable.
+      if (e instanceof AppError && e.code === 'DAILY_CAP_REACHED') {
+        req.log.warn('daily model call cap reached');
+        throw e;
+      }
+      req.log.error(
+        { errCode: (e as { code?: string }).code, upstreamStatus: (e as AppError).upstreamStatus },
+        'recognizer failed',
+      );
       throw new AppError('MODEL_UNAVAILABLE', 'Recognition is temporarily unavailable.');
     }
     const latencyMs = Date.now() - started;
-    req.log.info({ sign: result.sign, confidence: result.confidence, latencyMs }, 'recognized');
+    req.log.info(
+      {
+        sign: result.sign,
+        confidence: result.confidence,
+        latencyMs,
+        modelId: result.modelId,
+        clipBytes: clip.length, // size only, never content
+      },
+      'recognized',
+    );
     return { ...result, latencyMs };
   });
 
@@ -166,17 +199,37 @@ export async function buildApp(
     }
     let sentence: string;
     try {
-      sentence = await services.composer.compose({ ...body, signs });
+      // One sign is a fixed phrase ("Hello.", "Thank you."): no model call needed, and it saves about a second.
+      sentence =
+        signs.length === 1
+          ? composeByRules(signs)
+          : await services.composer.compose({ ...body, signs });
     } catch (e) {
       req.log.error({ errCode: (e as { code?: string }).code }, 'composer failed');
       throw new AppError('MODEL_UNAVAILABLE', 'Composing is temporarily unavailable.');
     }
-    if (!isGroundedSentence(sentence, signs)) {
+    if (!isGroundedSentence(sentence, signs, body.context)) {
       req.log.warn({ signs }, 'compose output failed grounding guard; using rule-based fallback');
       sentence = await fallbackComposer.compose({ ...body, signs });
     }
     req.log.info({ signs }, 'composed');
     return { sentence };
+  });
+
+  // The meeting summary. The caption text in the body is other people's words: it is held in memory for this call,
+  // never written anywhere, and never logged (only its length is).
+  app.post('/v1/context', { preHandler: authed }, async (req) => {
+    limiter.check(`context:${req.installId}`, config.limits.contextPerInstall);
+    const body = contextRequestSchema.parse(req.body);
+    let summary: string;
+    try {
+      summary = await services.summarizer.summarize(body);
+    } catch (e) {
+      req.log.error({ errCode: (e as { code?: string }).code }, 'summarizer failed');
+      throw new AppError('MODEL_UNAVAILABLE', 'The meeting summary is temporarily unavailable.');
+    }
+    req.log.info({ transcriptChars: body.transcript.length }, 'context summarised');
+    return { summary };
   });
 
   app.post('/v1/speak', { preHandler: authed }, async (req, reply) => {

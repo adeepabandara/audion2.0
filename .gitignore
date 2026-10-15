@@ -9,6 +9,10 @@ test-results/
 
 tools/fake-meet/audion-harness.js
 
+# Dev cost guard counter and eval output
+.call-cap.json
+results.csv
+
 # Secrets: never commit
 .env
 .env.*
@@ -29,3 +33,6 @@ popsign*/
 !tools/eval/fixtures/*.landmarks.json
 
 .DS_Store
+dist-web/
+# The small looped videos of the other people in the web demo's call window (not sign clips).
+!apps/extension/web/public/call/*.mp4

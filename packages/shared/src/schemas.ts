@@ -1,5 +1,12 @@
 import { z } from 'zod';
-import { MAX_COMPOSE_SIGNS, MAX_SPEAK_CHARS, MAX_SPEED, MIN_SPEED } from './constants.js';
+import {
+  MAX_COMPOSE_SIGNS,
+  MAX_CONTEXT_CHARS,
+  MAX_SPEAK_CHARS,
+  MAX_SPEED,
+  MAX_TRANSCRIPT_CHARS,
+  MIN_SPEED,
+} from './constants.js';
 import { SIGNS } from './signs.js';
 import { VOICE_IDS } from './voices.js';
 
@@ -12,6 +19,8 @@ export const ERROR_CODES = [
   'MODEL_UNAVAILABLE',
   'BAD_REQUEST',
   'UNAUTHENTICATED',
+  /** The server's daily cap on paid model calls was reached (dev cost guard). Not retryable. */
+  'DAILY_CAP_REACHED',
 ] as const;
 export const errorCodeSchema = z.enum(ERROR_CODES);
 export type ErrorCode = z.infer<typeof errorCodeSchema>;
@@ -50,6 +59,8 @@ export const recognizeResponseSchema = z.object({
   confidence: z.number().min(0).max(1).nullable(),
   alternatives: z.array(candidateSchema),
   latencyMs: z.number().nonnegative(),
+  /** Which model produced the answer (for testers; shown under About in Settings). */
+  modelId: z.string().optional(),
 });
 export type RecognizeResponse = z.infer<typeof recognizeResponseSchema>;
 
@@ -57,10 +68,21 @@ export type RecognizeResponse = z.infer<typeof recognizeResponseSchema>;
 export const composeRequestSchema = z.object({
   signs: z.array(z.string().min(1).max(40)).min(1).max(MAX_COMPOSE_SIGNS),
   tone: z.enum(['neutral', 'polite']).optional(),
+  /** Short summary of the meeting, for wording only (see /v1/context). Never stored or logged. */
+  context: z.string().max(MAX_CONTEXT_CHARS).optional(),
 });
 export type ComposeRequest = z.infer<typeof composeRequestSchema>;
 export const composeResponseSchema = z.object({ sentence: z.string().min(1) });
 export type ComposeResponse = z.infer<typeof composeResponseSchema>;
+
+// POST /v1/context: refresh the running meeting summary from new live-caption text. Nothing here is stored or logged.
+export const contextRequestSchema = z.object({
+  transcript: z.string().min(1).max(MAX_TRANSCRIPT_CHARS),
+  previous: z.string().max(MAX_CONTEXT_CHARS).optional(),
+});
+export type ContextRequest = z.infer<typeof contextRequestSchema>;
+export const contextResponseSchema = z.object({ summary: z.string().max(MAX_CONTEXT_CHARS) });
+export type ContextResponse = z.infer<typeof contextResponseSchema>;
 
 // POST /v1/speak
 export const speakRequestSchema = z.object({
@@ -83,5 +105,9 @@ export const healthResponseSchema = z.object({
   mode: z.enum(['live', 'mock']),
   /** Below this, the extension asks the signer to confirm a recognised sign. */
   confidenceThreshold: z.number().min(0).max(1).optional(),
+  /** The recognizer the server is configured with, e.g. "mock", "gemini-3.5-flash" or "tuned:<endpoint id>". */
+  modelId: z.string().optional(),
+  /** Which voices speak: Google Cloud Text-to-Speech or the mock placeholder tone. */
+  voices: z.enum(['google', 'mock']).optional(),
 });
 export type HealthResponse = z.infer<typeof healthResponseSchema>;

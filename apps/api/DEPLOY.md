@@ -5,25 +5,30 @@ jobs, and the commands below are for you to read and run yourself. Replace the `
 
 ## 0. What the service needs
 
-| Setting       | Value                                                                                                                                            |
-| ------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ |
-| Runtime       | Node 20 container (`apps/api/Dockerfile`), non-root, listens on `$PORT`                                                                          |
-| Google access | The Cloud Run **service account** through Application Default Credentials. Never create or download a key                                        |
-| Env           | `MOCK=0`, `GCP_PROJECT`, `RECOGNIZE_MODEL`, `RECOGNIZE_LOCATION`, `COMPOSE_MODEL`, `COMPOSE_LOCATION`, `CONFIDENCE_THRESHOLD`, `ALLOWED_ORIGINS` |
-| Secret        | `JWT_SECRET` from Secret Manager (the API refuses to start in live mode without it)                                                              |
+| Setting       | Value                                                                                                                                              |
+| ------------- | -------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Runtime       | Node 22 container (`apps/api/Dockerfile`), non-root, listens on `$PORT`                                                                            |
+| Google access | The Cloud Run **service account** through Application Default Credentials. Never create or download a key                                          |
+| Env           | `MOCK=0`, `GCP_PROJECT_ID`, `RECOGNIZER_MODE`, `TUNED_ENDPOINT_ID`, `COMPOSE_MODEL`, `COMPOSE_LOCATION`, `CONFIDENCE_THRESHOLD`, `ALLOWED_ORIGINS` |
+| Secret        | `JWT_SECRET` from Secret Manager (the API refuses to start in live mode without it)                                                                |
 
-The API refuses to start with `MOCK=0` if `GCP_PROJECT`, `JWT_SECRET` or `ALLOWED_ORIGINS` is missing, and warns if
+The API refuses to start with `MOCK=0` if `GCP_PROJECT_ID`, `JWT_SECRET` or `ALLOWED_ORIGINS` is missing, and warns if
 `ALLOWED_ORIGINS=*`.
 
 Models (all configuration, no code change):
 
 ```
 # Base model, global endpoint
-RECOGNIZE_MODEL=gemini-3.5-flash
-RECOGNIZE_LOCATION=global
-# Tuned model: its endpoint resource name, in the region it was tuned in
-RECOGNIZE_MODEL=projects/<project-number>/locations/us-central1/endpoints/<endpoint-id>
-RECOGNIZE_LOCATION=us-central1
+RECOGNIZER_MODE=base
+BASE_MODEL=gemini-3.5-flash
+BASE_LOCATION=global
+# Tuned model: the numeric endpoint ID; the API builds projects/<project>/locations/<TUNED_LOCATION>/endpoints/<id>.
+# The tuned endpoints are in the multi-region "us" (host aiplatform.us.rep.googleapis.com), not us-central1.
+RECOGNIZER_MODE=tuned
+TUNED_ENDPOINT_ID=<endpoint-id>
+TUNED_LOCATION=us
+# Cost guard: paid recognition calls per UTC day, per instance
+DAILY_CALL_CAP=500
 COMPOSE_MODEL=gemini-3.5-flash
 COMPOSE_LOCATION=global
 ```
@@ -82,9 +87,10 @@ gcloud builds submit --config apps/api/cloudbuild.yaml --substitutions _IMAGE=$I
 ```yaml
 # env.yaml (do not commit if it holds anything you consider sensitive; it holds no secrets)
 MOCK: '0'
-GCP_PROJECT: PROJECT_ID
-RECOGNIZE_MODEL: gemini-3.5-flash
-RECOGNIZE_LOCATION: global
+GCP_PROJECT_ID: PROJECT_ID
+RECOGNIZER_MODE: base
+BASE_MODEL: gemini-3.5-flash
+BASE_LOCATION: global
 COMPOSE_MODEL: gemini-3.5-flash
 COMPOSE_LOCATION: global
 CONFIDENCE_THRESHOLD: '0.5'
@@ -137,10 +143,10 @@ pnpm --filter @audion/eval eval --manifest test.jsonl --clips ./clips --api http
 The report prints API mode first and warns loudly if it is `mock`. First live run, look for:
 
 1. **Model ID.** `gemini-3.5-flash` was taken from your brief. I could not confirm it in Google's official docs,
-   so if the first call returns "model not found", fix `RECOGNIZE_MODEL` / `COMPOSE_MODEL` (and the location).
+   so if the first call returns "model not found", fix `BASE_MODEL` / `COMPOSE_MODEL` (and the location).
 2. **Logprobs.** In the report, "Confidence reported on N/N". If N is 0 the model returned no logprobs.
 3. **Thinking.** If many answers come back `unknown` with long latency, thinking tokens may be using the output
-   budget (the code asks for 2048). Raise it in `services/live/recognizer.ts` if so.
+   budget (the code asks for 2048). Raise `RECOGNIZE_MAX_OUTPUT_TOKENS` if so.
 4. **Text-to-Speech.** `POST /v1/speak` returns `audio/mpeg`. If it returns `MODEL_UNAVAILABLE`, check the API is
    enabled and the voice names in `packages/shared/src/voices.ts` exist for your project.
 
@@ -148,11 +154,35 @@ The report prints API mode first and warns loudly if it is `mock`. First live ru
 
 ```bash
 gcloud run services update audion-api --region us-central1 \
-  --update-env-vars RECOGNIZE_MODEL=projects/NUMBER/locations/us-central1/endpoints/ID,RECOGNIZE_LOCATION=us-central1
+  --update-env-vars RECOGNIZER_MODE=tuned,TUNED_ENDPOINT_ID=ID,TUNED_LOCATION=us
 ```
 
 Run the eval again and compare with the baseline (26.2%). Use the threshold sweep at the end of the report to
 choose `CONFIDENCE_THRESHOLD`, then update that variable the same way.
+
+## 7. Public web demo (AI Builder Cup submission)
+
+The same image also serves the public web demo (`apps/extension/web/`, built with `pnpm --filter @audion/extension
+build:web`, copied into the image as `/app/web`, `WEB_DIR` already set in the Dockerfile). One Cloud Run service is the
+whole site: page, hand tracker and API on one origin, so no CORS or extension ID is involved. Build the image from the
+repo root as in section 2, then deploy as in section 3 with these differences (your calls, not done from code):
+
+- `ALLOWED_ORIGINS` may stay empty for the demo; the site's own origin is accepted when `WEB_DIR` is set (live mode no longer refuses to start without it in that case). Add
+  `chrome-extension://EXTENSION_ID` if the extension uses the same service.
+- Use the **tuned** recognizer env vars from section 6 (`RECOGNIZER_MODE: tuned`, `TUNED_ENDPOINT_ID`, `TUNED_LOCATION: us`).
+- Keep the service warm and capped for the evaluation: `--min-instances 1 --max-instances 3`, a budget alert, and
+  `DAILY_CALL_CAP` sized to the expected judging traffic (it is per instance, in memory).
+- The judges must be able to open it without signing in: `--allow-unauthenticated` (check your organisation policy).
+- The image also carries the Gemma runtime's WebAssembly files (~112 MB in `/app/web/litert`). The 2 GB Gemma model itself is not in the image: visitors who turn the switch on fetch it from Hugging Face.
+- The meeting-context feature adds `POST /v1/context` (a Gemini text call using the compose model and location, about one call a minute per signer who turned it on). Its limit is `RATE_LIMIT_CONTEXT_PER_INSTALL_PER_MIN` (default 6). The caption text is never logged.
+- Do not redeploy or delete the tuned endpoint during evaluation. Check the site with:
+
+```bash
+pnpm --filter @audion/api smoke https://SERVICE_URL
+```
+
+It fetches the page, tracker and model files, checks health reports `live`, and makes one sentence and one voice
+call. It does not recognise a sign, so it cannot prove the tuned model is answering: do one real sign by hand too.
 
 ## Privacy checks
 

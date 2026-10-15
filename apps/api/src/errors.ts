@@ -6,6 +6,7 @@ const STATUS: Record<ErrorCode, number> = {
   MODEL_UNAVAILABLE: 503,
   BAD_REQUEST: 400,
   UNAUTHENTICATED: 401,
+  DAILY_CAP_REACHED: 429,
 };
 
 const RETRYABLE: Record<ErrorCode, boolean> = {
@@ -14,13 +15,17 @@ const RETRYABLE: Record<ErrorCode, boolean> = {
   MODEL_UNAVAILABLE: true,
   BAD_REQUEST: false,
   UNAUTHENTICATED: false,
+  DAILY_CAP_REACHED: false,
 };
 
 export class AppError extends Error {
   readonly code: ErrorCode;
-  constructor(code: ErrorCode, message: string) {
+  /** HTTP status the upstream model API answered with (logged server-side, never sent to the client). */
+  readonly upstreamStatus?: number;
+  constructor(code: ErrorCode, message: string, upstreamStatus?: number) {
     super(message);
     this.code = code;
+    this.upstreamStatus = upstreamStatus;
   }
   get status(): number {
     return STATUS[this.code];

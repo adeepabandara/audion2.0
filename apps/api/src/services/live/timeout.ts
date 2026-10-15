@@ -13,7 +13,9 @@ export async function withTimeout<T>(
   const deadline = new Promise<never>((_, reject) => {
     timer = setTimeout(() => {
       ctl.abort();
-      reject(new AppError('MODEL_UNAVAILABLE', 'The model took too long to answer, try again.'));
+      reject(
+        new AppError('MODEL_UNAVAILABLE', 'The model took too long to answer, try again.', 408),
+      );
     }, ms);
   });
   try {

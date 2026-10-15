@@ -158,6 +158,7 @@ describe('GeminiRecognizer', () => {
       sign: 'unknown',
       confidence: null,
       alternatives: [],
+      modelId: 'm',
     });
   });
 
@@ -199,6 +200,15 @@ describe('GeminiRecognizer', () => {
 });
 
 describe('GeminiComposer', () => {
+  it('sends a thinking level only when one is configured', async () => {
+    const a = fakeClient(response('Hello.'));
+    await new GeminiComposer(a.client, 'm', undefined, 'minimal').compose({ signs: ['hello'] });
+    expect(a.calls[0]!.config).toMatchObject({ thinkingConfig: { thinkingLevel: 'MINIMAL' } });
+    const b = fakeClient(response('Hello.'));
+    await new GeminiComposer(b.client, 'm').compose({ signs: ['hello'] });
+    expect(b.calls[0]!.config).not.toHaveProperty('thinkingConfig');
+  });
+
   it('sends glosses with the system prompt and few-shot examples, and returns a clean sentence', async () => {
     const { client, calls } = fakeClient(response('"Hello, please wait."\n'));
     const s = await new GeminiComposer(client, 'm').compose({
@@ -314,7 +324,7 @@ describe('deadlines', () => {
     };
     const started = Date.now();
     await expect(
-      new GeminiRecognizer(client, 'm', 50).recognize({
+      new GeminiRecognizer(client, 'm', { timeoutMs: 50 }).recognize({
         clip: Buffer.from('x'),
         mime: 'video/webm',
       }),
