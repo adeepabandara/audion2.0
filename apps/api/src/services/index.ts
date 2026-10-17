@@ -9,8 +9,10 @@ import { GeminiRecognizer } from './live/recognizer.js';
 import { CloudSpeaker, type TtsClient } from './live/speaker.js';
 import { GeminiSummarizer } from './live/summarizer.js';
 import { GeminiTranslator } from './live/translator.js';
+import { createSpeechClient, GoogleTranscriber } from './live/transcriber.js';
 import { MockComposer } from './mock/composer.js';
 import { MockSummarizer } from './mock/summarizer.js';
+import { MockTranscriber } from './mock/transcriber.js';
 import { MockTranslator } from './mock/translator.js';
 import { MockRecognizer } from './mock/recognizer.js';
 import { MockSpeaker } from './mock/speaker.js';
@@ -78,6 +80,8 @@ export function createServices(config: Config): Services {
       composer: new MockComposer(),
       summarizer: new MockSummarizer(),
       translator: new MockTranslator(),
+      transcriber: new MockTranscriber(),
+      transcriberMode: 'mock' as const,
       ...(config.speakerMode === 'cloud'
         ? {
             voices: 'google' as const,
@@ -104,6 +108,11 @@ export function createServices(config: Config): Services {
       undefined,
       config.compose.thinkingLevel,
     ),
+    transcriber:
+      config.speakerMode === 'mock'
+        ? new MockTranscriber()
+        : new GoogleTranscriber(createSpeechClient()),
+    transcriberMode: config.speakerMode === 'mock' ? ('mock' as const) : ('google' as const),
     translator: new GeminiTranslator(
       clientFor(config.compose.location),
       config.compose.model,

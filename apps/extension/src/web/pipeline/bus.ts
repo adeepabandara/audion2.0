@@ -32,6 +32,8 @@ export interface Stats {
   lastSentence: { sentence: string; writer: string; ms: number } | null;
   voices: number;
   lastVoice: { voiceId: string; ms: number } | null;
+  voiceChecks: number;
+  lastVoiceCheck: { heard: string; ms: number; mode: string } | null;
   contexts: number;
   lastContext: { summary: string; ms: number; chars: number } | null;
   captions: number;
@@ -57,6 +59,8 @@ export const emptyStats = (): Stats => ({
   lastSentence: null,
   voices: 0,
   lastVoice: null,
+  voiceChecks: 0,
+  lastVoiceCheck: null,
   contexts: 0,
   lastContext: null,
   captions: 0,
@@ -76,6 +80,7 @@ const API_NAMES: Record<string, string> = {
   'api/recognize': 'Recognise a sign',
   'api/compose': 'Write a sentence',
   'api/speak': 'Speak',
+  'api/voiceCheck': 'Check the voice',
   'api/translate': 'Translate',
   'api/context': 'Summarise the meeting',
   'api/health': 'Check the service',
@@ -101,6 +106,10 @@ export function describe(e: PipelineEvent): string | null {
       return `Translated to ${e.language} (${time(e.ms)}).`;
     case 'voice':
       return `Spoken aloud with Google Text-to-Speech, voice ${e.voiceId} (${time(e.ms)}).`;
+    case 'voice-check':
+      return e.mode === 'mock'
+        ? `Voice check (test mode, nothing really checked) (${time(e.ms)}).`
+        : `Speech-to-Text heard “${e.heard || 'nothing'}” (${time(e.ms)}).`;
     case 'context':
       return `Meeting summary updated from ${e.chars} characters of captions (${time(e.ms)}).`;
     case 'caption':
@@ -157,6 +166,13 @@ export function reduce(s: Stats, e: Stamped, at: number, nextId: () => number): 
       break;
     case 'voice':
       n = { ...s, voices: s.voices + 1, lastVoice: { voiceId: e.voiceId, ms: e.ms } };
+      break;
+    case 'voice-check':
+      n = {
+        ...s,
+        voiceChecks: s.voiceChecks + 1,
+        lastVoiceCheck: { heard: e.heard, ms: e.ms, mode: e.mode },
+      };
       break;
     case 'context':
       n = {

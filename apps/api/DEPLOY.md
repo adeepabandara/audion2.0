@@ -173,6 +173,11 @@ create cloud resources and change IAM.
 `roles/aiplatform.user`, create the `audion-jwt-secret` secret and the `audion` Artifact Registry repository, exactly
 as in section 1 (project `audion-511503`, region `us-central1`).
 
+**1b. Voice check (Speech-to-Text).** The voice setup's "What will people hear?" uses Google Cloud Speech-to-Text.
+Enable it once (an API setting, yours to run): `gcloud services enable speech.googleapis.com --project audion-511503`.
+Until then that button answers "Check unavailable." and nothing else is affected. Whether `audion-api` needs an extra
+role for it is not verified: if the first check fails with a permission error, say so and we will look at it.
+
 **2. Build** the image with Cloud Build (no local Docker needed; run from the repo root, it uploads this folder minus
 `.dockerignore`):
 
@@ -220,7 +225,8 @@ gcloud run deploy ola-demo \
   is not in the image: visitors' browsers fetch it from Hugging Face the first time Ola is turned on.
 - Calls the demo makes: `/v1/compose` (two or more signs, only when Gemma is not ready), `/v1/context` (about one a
   minute while the scripted meeting runs, limit `RATE_LIMIT_CONTEXT_PER_INSTALL_PER_MIN`), `/v1/translate` (one per
-  sentence when a language is picked, limit `RATE_LIMIT_TRANSLATE_PER_INSTALL_PER_MIN`) and `/v1/speak`. No text is
+  sentence when a language is picked, limit `RATE_LIMIT_TRANSLATE_PER_INSTALL_PER_MIN`), `/v1/voice-check`
+  (voice setup only, limit `RATE_LIMIT_VOICE_CHECK_PER_INSTALL_PER_MIN`) and `/v1/speak`. No text is
   logged.
 - Health is `GET /v1/health` (same answer as `/healthz`). Cloud Run's front end reserves `/healthz` on `*.run.app` and answers 404 itself, so clients and the smoke script use `/v1/health`.
 - **Custom domain (`ola.audion.live`).** (1) Verify `audion.live` for your Google account: `gcloud domains verify audion.live` (opens Search Console; add the TXT record it shows at your DNS host, then Verify). (2) Create the mapping (`gcloud beta run domain-mappings create --service ola-demo --domain ola.audion.live --region us-central1`, or the same call through the Cloud Run REST API). (3) At your DNS host add `CNAME ola -> ghs.googlehosted.com.` The HTTPS certificate is issued by Google after DNS resolves (minutes to a few hours). Domain mappings are a preview feature of Cloud Run.

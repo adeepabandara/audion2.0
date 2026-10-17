@@ -7,8 +7,10 @@ import {
   normaliseSign,
   recognizeFieldsSchema,
   sessionRequestSchema,
+  getVoice,
   speakRequestSchema,
   translateRequestSchema,
+  voiceCheckRequestSchema,
   type HealthResponse,
 } from '@audion/shared';
 import cors from '@fastify/cors';
@@ -247,6 +249,30 @@ export async function buildApp(
     }
     req.log.info({ language: body.language, chars: body.text.length }, 'translated');
     return { text };
+  });
+
+  // Voice check: speak a short line in the chosen voice and ask Google Speech-to-Text what it heard, so a signer who
+  // cannot hear can see that the voice is clear. The audio stays on the server (never stored); the text is not logged.
+  app.post('/v1/voice-check', { preHandler: authed }, async (req) => {
+    limiter.check(`voicecheck:${req.installId}`, config.limits.voiceCheckPerInstall);
+    const body = voiceCheckRequestSchema.parse(req.body);
+    const voice = getVoice(body.voiceId);
+    try {
+      const { audio } = await services.speaker.speak(body, { linear16: true });
+      const heard = await services.transcriber.transcribe({
+        audio,
+        languageCode: voice?.languageCode ?? 'en-US',
+        hint: body.text,
+      });
+      req.log.info({ chars: body.text.length, heardChars: heard.length }, 'voice checked');
+      return { heard, mode: services.transcriberMode };
+    } catch (e) {
+      req.log.error(
+        { errCode: (e as { code?: string }).code, upstreamStatus: (e as AppError).upstreamStatus },
+        'voice check failed',
+      );
+      throw new AppError('MODEL_UNAVAILABLE', 'The voice check is temporarily unavailable.');
+    }
   });
 
   app.post('/v1/speak', { preHandler: authed }, async (req, reply) => {

@@ -71,11 +71,13 @@ test('the whole panel can be used with the keyboard alone, with visible focus', 
   await press(page, 'Escape');
   await expect(drawer).toBeHidden();
 
-  // Supported signs sheet by keyboard.
-  await tabTo(page, /Supported signs/);
+  // Supported signs live in Settings > Signs; the tabs work by keyboard.
+  await tabTo(page, /^Settings$/);
   await press(page, 'Enter');
-  const sheet = page.getByRole('dialog', { name: 'Supported signs' });
-  await expect(sheet.getByRole('listitem')).toHaveCount(22);
+  const sheet = page.getByRole('dialog', { name: 'Settings' });
+  await sheet.getByRole('tab', { name: 'Voice' }).focus();
+  await press(page, 'ArrowRight', 2);
+  await expect(sheet.getByRole('tabpanel').getByRole('listitem')).toHaveCount(22);
   await press(page, 'Escape');
   await expect(sheet).toBeHidden();
 

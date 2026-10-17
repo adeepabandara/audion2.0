@@ -53,7 +53,7 @@ export interface SessionDeps {
     Settings,
     'holdTimeMs' | 'pauseMs' | 'speakMode' | 'voiceId' | 'speed' | 'postToChat' | 'monitorVoice'
   > &
-    Partial<Pick<Settings, 'fastSigns' | 'cloudCheck' | 'meetingContext' | 'language'>>;
+    Partial<Pick<Settings, 'fastSigns' | 'cloudCheck' | 'meetingContext' | 'language' | 'pitch'>>;
   /** Voice into the call: the MAIN-world inject script behind a postMessage bridge. */
   voice: VoiceChannel;
   /**
@@ -95,6 +95,7 @@ export function defaultDeps(trackerFor: () => HandTracker): SessionDeps {
       cloudCheck: false,
       meetingContext: false,
       language: 'en',
+      pitch: 0,
     }),
     voice: new VoiceBridge(),
     context: new MeetingContext({
@@ -540,6 +541,7 @@ export class AudionSession {
         voiceId: cfg.voiceId,
         speed: cfg.speed,
         ...(this.sentenceLanguage !== 'en' ? { language: this.sentenceLanguage } : {}),
+        ...(cfg.pitch ? { pitch: cfg.pitch } : {}),
       })) as
         | { ok: true; audioBase64: string }
         | { ok: false; error?: { retryable?: boolean } }

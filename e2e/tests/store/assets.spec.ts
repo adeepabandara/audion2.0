@@ -101,8 +101,9 @@ test.describe('Chrome Web Store screenshots (1280x800)', () => {
   test('4 supported signs', async ({ page }) => {
     await ready(page);
     await expand(page);
-    await page.getByRole('button', { name: 'Supported signs' }).click();
-    await expect(page.getByRole('dialog', { name: 'Supported signs' })).toBeVisible();
+    await page.getByRole('button', { name: 'Settings' }).click();
+    await page.getByRole('tab', { name: 'Signs' }).click();
+    await expect(page.getByRole('dialog', { name: 'Settings' })).toBeVisible();
     await shot(page, '4-supported-signs');
   });
 

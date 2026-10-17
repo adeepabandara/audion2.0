@@ -53,6 +53,9 @@ importers:
       fastify:
         specifier: 5.12.5
         version: 5.12.5
+      google-auth-library:
+        specifier: 11.2.0
+        version: 11.2.0(supports-color@7.2.0)
       jose:
         specifier: 6.2.12
         version: 6.2.12

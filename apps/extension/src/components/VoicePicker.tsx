@@ -1,22 +1,32 @@
-import { Banner, Slider, VoiceCard } from '@audion/ui';
-import { MAX_SPEED, MIN_SPEED, VOICES, type VoiceId } from '@audion/shared';
+import { Banner, Segmented, Slider, VoiceCard } from '@audion/ui';
+import {
+  ACCENTS,
+  getVoice,
+  MAX_SPEED,
+  MIN_SPEED,
+  VOICES,
+  type Accent,
+  type VoiceId,
+} from '@audion/shared';
 import { useEffect, useRef, useState } from 'react';
 import { playAudio, type Playback } from '../lib/audioPlayer';
 import { fromBase64, send } from '../lib/messages';
 import { getSettingsStore } from '../lib/settings';
 
-const DESCRIPTIONS: Record<VoiceId, string> = {
-  aria: 'Warm, female, US English',
-  nora: 'Bright, female, US English',
-  david: 'Calm, male, US English',
-  miles: 'Deep, male, US English',
+/** Google gives no description of how a voice sounds, so only what is known is said: gender and accent. */
+const describe = (id: VoiceId): string => {
+  const v = getVoice(id);
+  const accent = ACCENTS.find((a) => a.id === v?.accent)?.label ?? '';
+  return `${v?.gender === 'male' ? 'Male' : 'Female'}, ${accent} English`;
 };
-export const SAMPLE_LINE = 'Hello, I’m signing with Ola. Please wait a moment.';
+/** No brand name: Speech-to-Text hears "Ola" as "ole", which would flag a clear voice as missing a word. */
+export const SAMPLE_LINE = 'Hello, I’m signing with you. Please wait a moment.';
 
 export function VoicePicker({ heading = true }: { heading?: boolean }) {
   const { useStore } = getSettingsStore();
   const { voiceId, speed } = useStore((s) => s.settings);
   const update = useStore((s) => s.update);
+  const [accent, setAccent] = useState<Accent>(() => getVoice(voiceId)?.accent ?? 'us');
   const [playing, setPlaying] = useState<VoiceId | null>(null);
   const [error, setError] = useState<string | null>(null);
   const current = useRef<Playback | null>(null);
@@ -52,13 +62,19 @@ export function VoicePicker({ heading = true }: { heading?: boolean }) {
     <div style={{ display: 'grid', gap: 12 }}>
       {heading && <h2>Pick your voice</h2>}
       {error && <Banner tone="error">{error}</Banner>}
+      <Segmented
+        label="Accent"
+        value={accent}
+        onValueChange={setAccent}
+        options={ACCENTS.map((a) => ({ value: a.id, label: a.label }))}
+      />
       <div style={{ display: 'grid', gap: 8 }} role="radiogroup" aria-label="Voice">
-        {VOICES.map((v) => (
+        {VOICES.filter((v) => v.accent === accent).map((v) => (
           <VoiceCard
             key={v.id}
             groupName="voice"
             name={v.label}
-            description={DESCRIPTIONS[v.id]}
+            description={describe(v.id)}
             selected={voiceId === v.id}
             playing={playing === v.id}
             onSelect={() => void update({ voiceId: v.id })}

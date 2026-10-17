@@ -26,10 +26,19 @@ describe('signs', () => {
 });
 
 describe('voices', () => {
-  it('has four en-US voices, two female and two male', () => {
-    expect(VOICES).toHaveLength(4);
-    expect(VOICES.filter((v) => v.gender === 'female')).toHaveLength(2);
-    expect(VOICES.filter((v) => v.gender === 'male')).toHaveLength(2);
+  it('keeps the four original voices, and has voices in four accents of both genders', () => {
+    const names = Object.fromEntries(VOICES.map((v) => [v.id, v.ttsName]));
+    expect(names).toMatchObject({
+      aria: 'en-US-Neural2-F',
+      nora: 'en-US-Neural2-C',
+      david: 'en-US-Neural2-D',
+      miles: 'en-US-Neural2-J',
+    });
+    for (const accent of ['us', 'uk', 'in', 'au'] as const) {
+      const here = VOICES.filter((v) => v.accent === accent);
+      expect(here.some((v) => v.gender === 'female')).toBe(true);
+      expect(here.some((v) => v.gender === 'male')).toBe(true);
+    }
   });
 });
 

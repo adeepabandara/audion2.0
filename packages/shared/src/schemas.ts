@@ -4,10 +4,12 @@ import {
   MAX_CONTEXT_CHARS,
   MAX_SPEAK_CHARS,
   MAX_SPEED,
+  MAX_VOICE_CHECK_CHARS,
   MAX_TRANSCRIPT_CHARS,
   MIN_SPEED,
 } from './constants.js';
 import { LANGUAGE_CODES, TRANSLATE_CODES } from './languages.js';
+import { MAX_PITCH, MIN_PITCH } from './voiceProfile.js';
 import { SIGNS } from './signs.js';
 import { VOICE_IDS } from './voices.js';
 
@@ -100,6 +102,24 @@ export const translateResponseSchema = z.object({
 });
 export type TranslateResponse = z.infer<typeof translateResponseSchema>;
 
+// POST /v1/voice-check: speak a short line in the chosen voice, run the audio through Google Speech-to-Text and say
+// what it heard, so a signer who cannot hear can see that the voice is clear. The audio never leaves the server and
+// is not stored; the text is not logged.
+export const voiceCheckRequestSchema = z.object({
+  text: z.string().min(1).max(MAX_VOICE_CHECK_CHARS),
+  voiceId: z.enum(VOICE_IDS),
+  speed: z.number().min(MIN_SPEED).max(MAX_SPEED),
+  pitch: z.number().min(MIN_PITCH).max(MAX_PITCH).optional(),
+});
+export type VoiceCheckRequest = z.infer<typeof voiceCheckRequestSchema>;
+export const voiceCheckResponseSchema = z.object({
+  /** What Speech-to-Text heard. */
+  heard: z.string().max(MAX_VOICE_CHECK_CHARS * 2),
+  /** "mock" means test mode: nothing was really checked. */
+  mode: z.enum(['google', 'mock']),
+});
+export type VoiceCheckResponse = z.infer<typeof voiceCheckResponseSchema>;
+
 // POST /v1/speak
 export const speakRequestSchema = z.object({
   text: z.string().min(1).max(MAX_SPEAK_CHARS),
@@ -107,6 +127,8 @@ export const speakRequestSchema = z.object({
   speed: z.number().min(MIN_SPEED).max(MAX_SPEED),
   /** Language of the text (default English). A translated sentence is spoken in its own language. */
   language: z.enum(LANGUAGE_CODES).optional(),
+  /** Semitones higher or lower than the voice's own pitch (default 0). */
+  pitch: z.number().min(MIN_PITCH).max(MAX_PITCH).optional(),
 });
 export type SpeakRequest = z.infer<typeof speakRequestSchema>;
 

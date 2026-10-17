@@ -16,7 +16,9 @@ export type NodeId =
   | 'api'
   | 'gemini'
   | 'tts'
-  | 'speaker';
+  | 'speaker'
+  | 'profile'
+  | 'stt';
 
 export type IconKey =
   | 'camera'
@@ -29,7 +31,9 @@ export type IconKey =
   | 'server'
   | 'chip'
   | 'wave'
-  | 'speaker';
+  | 'speaker'
+  | 'voice'
+  | 'listen';
 
 export interface PipelineNode {
   id: NodeId;
@@ -38,7 +42,7 @@ export interface PipelineNode {
   title: string;
   /** One line under the title. */
   subtitle: string;
-  /** Centre in the diagram's 1440 x 780 space. */
+  /** Centre in the diagram's 1440 x 900 space. */
   x: number;
   y: number;
   /** What it is, in plain words (shown in the side panel). */
@@ -47,7 +51,7 @@ export interface PipelineNode {
   data: string;
 }
 
-export const CANVAS = { w: 1440, h: 780 };
+export const CANVAS = { w: 1440, h: 900 };
 export const NODE_W = 184;
 export const NODE_H = 88;
 
@@ -173,6 +177,28 @@ export const NODES: PipelineNode[] = [
     what: 'Plays the audio on your device. In the Chrome extension on a real Meet call, the voice is also mixed into your microphone so the other people hear it.',
     data: 'Audio in. Nothing leaves your device from here.',
   },
+  {
+    id: 'profile',
+    icon: 'voice',
+    zone: 'device',
+    title: 'Voice profile',
+    subtitle: 'your voice setup',
+    x: 672,
+    y: 780,
+    what: 'Your voice, set up from a few questions: which Google voice, how much higher or lower, and how fast. It is saved on your device and travels with every sentence, so Ola always sounds like you.',
+    data: 'Voice name, pitch and pace (three small values). No audio and no personal details.',
+  },
+  {
+    id: 'stt',
+    icon: 'listen',
+    zone: 'cloud',
+    title: 'Speech-to-Text',
+    subtitle: 'Google Cloud',
+    x: 1260,
+    y: 780,
+    what: 'Google Cloud Speech-to-Text. During voice setup it listens to a sample of your voice and says what it heard, so you can see, in words, how clear the voice is for the people you talk to.',
+    data: 'A short sample in the chosen voice goes in, text comes out. The audio stays on the server and is not stored.',
+  },
 ];
 
 export type EdgeId =
@@ -187,7 +213,10 @@ export type EdgeId =
   | 'ctx-api'
   | 'sent-api'
   | 'api-tts'
-  | 'tts-spk';
+  | 'tts-spk'
+  | 'prof-tts'
+  | 'tts-stt'
+  | 'stt-prof';
 
 /** The kinds of data, which the legend colours. */
 export type DataKind = 'video' | 'points' | 'signs' | 'text' | 'audio' | 'context';
@@ -268,6 +297,33 @@ export const EDGES: PipelineEdge[] = [
     anchor: 'start',
   },
   { id: 'tts-spk', d: 'M1168 640 L1040 640', label: 'audio', kind: 'audio', lx: 1104, ly: 628 },
+  {
+    id: 'prof-tts',
+    d: 'M764 766 L1108 766 L1108 664 L1168 664',
+    label: 'voice, pitch, pace',
+    kind: 'signs',
+    lx: 936,
+    ly: 756,
+  },
+  {
+    id: 'tts-stt',
+    d: 'M1260 684 L1260 736',
+    label: 'sample',
+    kind: 'audio',
+    optional: true,
+    lx: 1278,
+    ly: 714,
+    anchor: 'start',
+  },
+  {
+    id: 'stt-prof',
+    d: 'M1168 800 L764 800',
+    label: 'what people will hear',
+    kind: 'text',
+    optional: true,
+    lx: 966,
+    ly: 820,
+  },
 ];
 
 export const EDGE_BY_ID = Object.fromEntries(EDGES.map((e) => [e.id, e])) as Record<
@@ -285,6 +341,7 @@ export type PipelineEvent =
   | { kind: 'sentence'; sentence: string; writer: string; ms: number }
   | { kind: 'translate'; language: string; ms: number }
   | { kind: 'voice'; voiceId: string; ms: number }
+  | { kind: 'voice-check'; heard: string; ms: number; mode: string }
   | { kind: 'context'; summary: string; ms: number; chars: number }
   | { kind: 'caption'; speaker: string; text: string }
   | { kind: 'api'; path: string; ok: boolean; ms: number }
@@ -322,7 +379,9 @@ export function nodesFor(e: PipelineEvent): NodeId[] {
     case 'translate':
       return ['sentence', 'api', 'gemini'];
     case 'voice':
-      return ['api', 'tts', 'speaker'];
+      return ['profile', 'api', 'tts', 'speaker'];
+    case 'voice-check':
+      return ['profile', 'tts', 'stt'];
     case 'context':
       return ['context', 'api', 'gemini'];
     case 'caption':
@@ -356,7 +415,9 @@ export function routeFor(e: PipelineEvent): Hop[] {
     case 'translate':
       return chain([['sent-api'], ['api-gem'], ['api-gem', true], ['sent-api', true]]);
     case 'voice':
-      return chain([['sent-api'], ['api-tts'], ['api-tts', true], ['tts-spk']]);
+      return chain([['sent-api'], ['api-tts'], ['prof-tts'], ['api-tts', true], ['tts-spk']]);
+    case 'voice-check':
+      return chain([['prof-tts'], ['tts-stt'], ['stt-prof']]);
     case 'context':
       return chain([['ctx-api'], ['api-gem'], ['api-gem', true], ['ctx-api', true], ['ctx-sent']]);
     case 'caption':

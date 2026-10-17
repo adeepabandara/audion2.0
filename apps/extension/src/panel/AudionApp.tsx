@@ -8,7 +8,6 @@ import { CaptionBar } from './CaptionBar';
 import { PanelCard } from './PanelCard';
 import { Pill } from './Pill';
 import { SettingsDrawer } from './SettingsDrawer';
-import { SignsSheet } from './SignsSheet';
 import { SummaryCard } from './SummaryCard';
 import {
   barClearance,
@@ -228,7 +227,6 @@ export function AudionApp({
               onLanguageChange={(l) => void settings.useStore.getState().update({ language: l })}
               onCollapse={() => setExpanded(false)}
               onOpenSettings={() => openDrawer('settings')}
-              onOpenSigns={() => openDrawer('signs')}
               demo={demo}
               showActions={speakMode === 'confirm'}
               style={{
@@ -262,12 +260,7 @@ export function AudionApp({
           <SettingsDrawer
             open={drawer === 'settings'}
             onOpenChange={(o) => (o ? openDrawer('settings') : closeDrawer())}
-            onShowSigns={() => openDrawer('signs')}
             modelId={machine.modelId}
-          />
-          <SignsSheet
-            open={drawer === 'signs'}
-            onOpenChange={(o) => (o ? openDrawer('signs') : closeDrawer())}
           />
         </>
       )}

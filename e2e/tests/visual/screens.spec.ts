@@ -132,9 +132,10 @@ test.describe('in the call', () => {
   test('10 supported signs sheet', async ({ page }) => {
     await meet(page);
     await expand(page);
-    await page.getByRole('button', { name: 'Supported signs' }).click();
+    await page.getByRole('button', { name: 'Settings' }).click();
+    await page.getByRole('tab', { name: 'Signs' }).click();
     await expect(
-      page.getByRole('dialog', { name: 'Supported signs' }).getByRole('listitem'),
+      page.getByRole('dialog', { name: 'Settings' }).getByRole('tabpanel').getByRole('listitem'),
     ).toHaveCount(22);
     await shot(page, '10-supported-signs');
   });

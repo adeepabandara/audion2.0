@@ -6,9 +6,11 @@ import {
   recognizeResponseSchema,
   sessionResponseSchema,
   translateResponseSchema,
+  voiceCheckResponseSchema,
   type ComposeRequest,
   type ContextRequest,
   type TranslateRequest,
+  type VoiceCheckRequest,
   type SpeakRequest,
 } from '@audion/shared';
 import type { Failure } from './messages';
@@ -149,6 +151,12 @@ export function createApiClient({
       const res = await authed('/v1/context', (t) => json(t, req));
       if (isFailure(res)) return res;
       return { ok: true as const, ...contextResponseSchema.parse(await res.json()) };
+    },
+
+    async voiceCheck(req: VoiceCheckRequest) {
+      const res = await authed('/v1/voice-check', (t) => json(t, req));
+      if (isFailure(res)) return res;
+      return { ok: true as const, ...voiceCheckResponseSchema.parse(await res.json()) };
     },
 
     async translate(req: TranslateRequest) {

@@ -55,6 +55,7 @@ const envSchema = z.object({
   /** Meeting summaries are a Gemini call each and the app asks about once a minute, so this is much lower. */
   RATE_LIMIT_CONTEXT_PER_INSTALL_PER_MIN: z.coerce.number().int().positive().default(6),
   RATE_LIMIT_TRANSLATE_PER_INSTALL_PER_MIN: z.coerce.number().int().positive().default(20),
+  RATE_LIMIT_VOICE_CHECK_PER_INSTALL_PER_MIN: z.coerce.number().int().positive().default(6),
   // Proxies in front of the service whose X-Forwarded-For entry we trust (Cloud Run: 1). 0 = use the socket address.
   TRUST_PROXY_HOPS: z.coerce.number().int().min(0).max(5).default(0),
   SESSION_LIMIT_PER_IP_PER_MIN: z.coerce.number().int().positive().default(10),
@@ -94,6 +95,7 @@ export interface Config {
     perInstall: number;
     contextPerInstall: number;
     translatePerInstall: number;
+    voiceCheckPerInstall: number;
     sessionPerIp: number;
   };
   trustProxyHops: number;
@@ -162,6 +164,7 @@ export function loadConfig(env: Record<string, string | undefined> = process.env
       perInstall: e.RATE_LIMIT_PER_INSTALL_PER_MIN,
       contextPerInstall: e.RATE_LIMIT_CONTEXT_PER_INSTALL_PER_MIN,
       translatePerInstall: e.RATE_LIMIT_TRANSLATE_PER_INSTALL_PER_MIN,
+      voiceCheckPerInstall: e.RATE_LIMIT_VOICE_CHECK_PER_INSTALL_PER_MIN,
       sessionPerIp: e.SESSION_LIMIT_PER_IP_PER_MIN,
     },
   };
