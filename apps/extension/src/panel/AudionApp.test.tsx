@@ -1,3 +1,4 @@
+import { SIGN_LIST } from './signs';
 import { act, fireEvent, waitFor, within } from '@testing-library/react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -131,11 +132,16 @@ describe('Audion in a Shadow root', () => {
   it('picks a language for live translation from the card and saves it', async () => {
     const { ui, settings } = await mount();
     fireEvent.click(ui.getByRole('button', { name: 'Expand Ola' }));
-    const picker = ui.getByRole('combobox', { name: /Translate Ola/ }) as HTMLSelectElement;
-    expect(picker.value).toBe('en');
-    fireEvent.change(picker, { target: { value: 'es' } });
+    const picker = ui.getByRole('button', { name: /Translate Ola.*English/ });
+    expect(picker.getAttribute('aria-haspopup')).toBe('listbox');
+    fireEvent.click(picker);
+    const list = await ui.findByRole('listbox', { name: /Translate Ola/ });
+    expect(within(list).getAllByRole('option')).toHaveLength(9);
+    fireEvent.click(within(list).getByRole('option', { name: /Español/ }));
     await waitFor(() => expect(settings.useStore.getState().settings.language).toBe('es'));
-    expect(picker.value).toBe('es');
+    expect(ui.queryByRole('listbox')).toBeNull();
+    expect(ui.getByRole('button', { name: /Translate Ola.*Español/ })).toBeTruthy();
+    expect(ui.queryByText(/Translating to/)).toBeNull(); // no ribbon: the picker itself shows the language
   });
 
   it('opens the settings drawer inside the shadow root and saves changes', async () => {
@@ -155,16 +161,19 @@ describe('Audion in a Shadow root', () => {
     );
     await waitFor(() => expect(settings.useStore.getState().settings.monitorVoice).toBe(false));
 
-    fireEvent.click(within(drawer).getByRole('switch', { name: /post sentences to Meet chat/ }));
+    fireEvent.click(within(drawer).getByRole('tab', { name: 'Display' }));
+    fireEvent.click(
+      await within(drawer).findByRole('switch', { name: /post sentences to Meet chat/ }),
+    );
     await waitFor(() => expect(settings.useStore.getState().settings.postToChat).toBe(true));
+    expect(within(drawer).getByText(/can’t see Ola’s caption bar/)).toBeTruthy();
 
-    // Privacy toggle is on and locked; other languages are shown as coming soon.
+    // Privacy toggle is on and locked.
+    fireEvent.click(within(drawer).getByRole('tab', { name: 'About' }));
     const privacy = within(drawer).getByRole('switch', { name: 'Don’t store any video' });
     expect(privacy.getAttribute('aria-checked')).toBe('true');
     expect((privacy as HTMLButtonElement).disabled).toBe(true);
-    expect(within(drawer).getAllByText('Coming soon').length).toBeGreaterThan(0);
     expect(within(drawer).getByText(/PopSign ASL v1.0 \(CC BY 4.0\)/)).toBeTruthy();
-    expect(within(drawer).getByText(/can’t see Ola’s own caption bar/)).toBeTruthy();
     expect(within(drawer).getByText(/not known yet/)).toBeTruthy(); // no model reported yet
   });
 
@@ -201,7 +210,8 @@ describe('Audion in a Shadow root', () => {
     fireEvent.click(ui.getByRole('button', { name: 'Expand Ola' }));
     fireEvent.click(ui.getByRole('button', { name: 'Settings' }));
     const drawer = await ui.findByRole('dialog', { name: 'Settings' });
-    expect(within(drawer).getByText('tuned:1234567890')).toBeTruthy();
+    fireEvent.click(within(drawer).getByRole('tab', { name: 'About' }));
+    expect(await within(drawer).findByText('tuned:1234567890')).toBeTruthy();
   });
 
   it('keeps the drawer open when clicking inside it and closes on Escape', async () => {
@@ -210,7 +220,7 @@ describe('Audion in a Shadow root', () => {
     fireEvent.click(ui.getByRole('button', { name: 'Settings' }));
     const drawer = await ui.findByRole('dialog', { name: 'Settings' });
 
-    const target = within(drawer).getByText('Voice and speed');
+    const target = within(drawer).getByText('My voice');
     fireEvent.pointerDown(target);
     fireEvent.mouseDown(target);
     fireEvent.click(target);
@@ -220,21 +230,30 @@ describe('Audion in a Shadow root', () => {
     await waitFor(() => expect(ui.queryByRole('dialog', { name: 'Settings' })).toBeNull());
   });
 
-  it('shows all 22 supported signs from the panel footer and from settings', async () => {
+  it('shows every supported sign inside Settings, and no longer in the footer', async () => {
     const { ui } = await mount();
     fireEvent.click(ui.getByRole('button', { name: 'Expand Ola' }));
-    fireEvent.click(ui.getByRole('button', { name: 'Supported signs' }));
-    const sheet = await ui.findByRole('dialog', { name: 'Supported signs' });
-    expect(within(sheet).getAllByRole('listitem')).toHaveLength(22);
-    expect(within(sheet).getByText('thank you')).toBeTruthy();
-    expect(within(sheet).getByText(/The list will grow/)).toBeTruthy();
-    fireEvent.keyDown(sheet, { key: 'Escape' });
-    await waitFor(() => expect(ui.queryByRole('dialog')).toBeNull());
-
+    expect(ui.queryByRole('button', { name: 'Supported signs' })).toBeNull();
     fireEvent.click(ui.getByRole('button', { name: 'Settings' }));
-    const settingsDrawer = await ui.findByRole('dialog', { name: 'Settings' });
-    fireEvent.click(within(settingsDrawer).getByRole('button', { name: 'See supported signs' }));
-    expect(await ui.findByRole('dialog', { name: 'Supported signs' })).toBeTruthy();
+    const drawer = await ui.findByRole('dialog', { name: 'Settings' });
+    fireEvent.click(within(drawer).getByRole('tab', { name: 'Signs' }));
+    const panel = await within(drawer).findByRole('tabpanel');
+    expect(within(panel).getAllByRole('listitem')).toHaveLength(SIGN_LIST.length);
+    expect(within(panel).getByText('thank you')).toBeTruthy();
+    expect(within(panel).getByText(/The list will grow/)).toBeTruthy();
+  });
+
+  it('moves between the settings tabs with the arrow keys', async () => {
+    const { ui } = await mount();
+    fireEvent.click(ui.getByRole('button', { name: 'Expand Ola' }));
+    fireEvent.click(ui.getByRole('button', { name: 'Settings' }));
+    const drawer = await ui.findByRole('dialog', { name: 'Settings' });
+    const voice = within(drawer).getByRole('tab', { name: 'Voice' });
+    expect(voice.getAttribute('aria-selected')).toBe('true');
+    fireEvent.keyDown(voice, { key: 'ArrowRight' });
+    const signing = within(drawer).getByRole('tab', { name: 'Signing' });
+    expect(signing.getAttribute('aria-selected')).toBe('true');
+    expect(within(drawer).getByRole('tabpanel').textContent).toMatch(/Sentence pause/);
   });
 
   it('applies the chosen theme to the whole surface', async () => {
@@ -329,6 +348,9 @@ describe('recognition UI', () => {
     const { ui, settings } = await on(session);
     await act(async () => {
       fireEvent.click(ui.getByRole('button', { name: /Settings/i }));
+    });
+    await act(async () => {
+      fireEvent.click(await ui.findByRole('tab', { name: 'Signing' }));
     });
     const toggle = await ui.findByRole('switch', { name: 'Use the meeting to word sentences' });
     expect(toggle.getAttribute('aria-checked')).toBe('false');
@@ -490,6 +512,9 @@ describe('recognition UI', () => {
     await act(async () => {
       fireEvent.click(ui.getByRole('button', { name: /Settings/i }));
     });
+    await act(async () => {
+      fireEvent.click(await ui.findByRole('tab', { name: 'Signing' }));
+    });
     const toggle = await ui.findByRole('switch', { name: 'Have Gemini double-check signs' });
     expect(toggle.getAttribute('aria-checked')).toBe('false');
     await act(async () => {
@@ -503,6 +528,9 @@ describe('recognition UI', () => {
     const { ui, settings } = await on(session);
     await act(async () => {
       fireEvent.click(ui.getByRole('button', { name: /Settings/i }));
+    });
+    await act(async () => {
+      fireEvent.click(await ui.findByRole('tab', { name: 'Signing' }));
     });
     const group = await ui.findByRole('radiogroup', { name: 'Sentence pause' });
     expect(within(group).getByRole('radio', { name: 'Normal' }).getAttribute('data-state')).toBe(

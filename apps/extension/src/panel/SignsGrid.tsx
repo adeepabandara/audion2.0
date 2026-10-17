@@ -1,23 +1,15 @@
-import { Banner, Drawer } from '@audion/ui';
+import { Banner } from '@audion/ui';
 import { BodyPlace, HandShape } from './HandPose';
 import { SIGN_LIST } from './signs';
 
-export function SignsSheet({
-  open,
-  onOpenChange,
-}: {
-  open: boolean;
-  onOpenChange(open: boolean): void;
-}) {
+/** The 22 supported signs with a small picture of the hand shape and where it is made. Shown in Settings > Signs. */
+export function SignsGrid() {
   return (
-    <Drawer
-      open={open}
-      onOpenChange={onOpenChange}
-      modal={false}
-      width={440}
-      title="Supported signs"
-      description="Ola recognises these 22 American Sign Language signs. Sign slowly and clearly, one at a time."
-    >
+    <>
+      <p className="ap-note">
+        Ola recognises these {SIGN_LIST.length} American Sign Language signs. Sign slowly and
+        clearly, one at a time.
+      </p>
       <ul className="ap-signs">
         {SIGN_LIST.map((s) => (
           <li key={s.sign} className="ap-sign">
@@ -34,6 +26,6 @@ export function SignsSheet({
         The list will grow. The pictures are quick reminders of hand shape and position, not a full
         guide to each sign.
       </Banner>
-    </Drawer>
+    </>
   );
 }

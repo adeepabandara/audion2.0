@@ -37,8 +37,17 @@ export interface Translator {
 }
 
 export interface Speaker {
-  speak(input: SpeakRequest): Promise<{ audio: Buffer; contentType: string }>;
+  /** `linear16`: 16 kHz raw PCM, for Speech-to-Text (the voice check) instead of the MP3 sent to the browser. */
+  speak(
+    input: SpeakRequest,
+    opts?: { linear16?: boolean },
+  ): Promise<{ audio: Buffer; contentType: string }>;
   warmUp?(): Promise<void>;
+}
+
+export interface Transcriber {
+  /** What Speech-to-Text hears in 16 kHz linear PCM audio. Nothing is stored or logged. */
+  transcribe(input: { audio: Buffer; languageCode: string; hint?: string }): Promise<string>;
 }
 
 export interface Services {
@@ -50,4 +59,7 @@ export interface Services {
   summarizer: Summarizer;
   translator: Translator;
   speaker: Speaker;
+  /** Google Speech-to-Text, or the mock that repeats the text it was given. */
+  transcriber: Transcriber;
+  transcriberMode: 'google' | 'mock';
 }

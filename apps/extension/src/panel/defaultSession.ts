@@ -22,6 +22,7 @@ export function createDefaultSession(
       cloudCheck,
       meetingContext,
       language,
+      pitch,
     } = getSettingsStore().useStore.getState().settings;
     return {
       holdTimeMs,
@@ -35,6 +36,7 @@ export function createDefaultSession(
       cloudCheck,
       meetingContext,
       language,
+      pitch,
     };
   };
   return new AudionSession({ ...deps, ...overrides });

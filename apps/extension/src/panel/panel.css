@@ -145,16 +145,16 @@
 }
 /* A narrower toggle and a smaller collapse button in the header leave the status pill room for its word. */
 .ap-card__head .au-switch {
-  width: 60px;
+  width: 64px;
 }
 .ap-card__head .au-switch[data-state='checked'] .au-switch__thumb {
-  transform: translateX(30px);
+  transform: translateX(34px);
 }
 .ap-card__head .au-switch[data-state='unchecked'] .au-switch__text {
-  right: 8px;
+  right: 7px;
 }
 .ap-card__head .au-switch[data-state='checked'] .au-switch__text {
-  left: 9px;
+  left: 8px;
 }
 .ap-card__head .au-btn {
   width: 32px;
@@ -646,41 +646,6 @@
   line-height: 1.3;
 }
 
-/* The "Speak aloud" switch and the live-translation language picker share one row. */
-.ap-voice-row {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-}
-.ap-voice-row .au-toggle {
-  gap: 8px;
-  min-width: 0;
-}
-.ap-voice-row .au-toggle label {
-  white-space: nowrap;
-  font-size: 0.8125rem;
-}
-.ap-lang {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  min-width: 0;
-  color: var(--au-text-2);
-}
-.ap-lang select {
-  max-width: 104px;
-  min-height: 32px;
-  padding: 0 8px;
-  border: 1px solid var(--au-divider);
-  border-radius: 8px;
-  background: var(--au-raised);
-  color: var(--au-text);
-  font: inherit;
-  font-size: 0.8125rem;
-  cursor: pointer;
-}
-.ap-lang select:focus-visible {
-  outline: 2px solid var(--au-highlight);
-  outline-offset: 2px;
+.ap-foot .au-langbtn {
+  max-width: 150px;
 }

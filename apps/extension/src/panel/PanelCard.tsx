@@ -5,6 +5,7 @@ import {
   Chip,
   Icon,
   KeyHint,
+  LanguageMenu,
   Popover,
   PopoverActions,
   StatusPill,
@@ -23,7 +24,8 @@ import {
   type KeyboardEvent,
   type PointerEvent,
 } from 'react';
-import { LANGUAGES, type LanguageCode } from '@audion/shared';
+import { type LanguageCode } from '@audion/shared';
+import { LANGUAGE_OPTIONS } from './languages';
 import { send } from '../lib/messages';
 import { SIGN_LABEL } from './signs';
 import { drawLandmarks } from './draw';
@@ -285,7 +287,6 @@ export interface PanelCardProps {
   onLanguageChange?(language: LanguageCode): void;
   onCollapse(): void;
   onOpenSettings(): void;
-  onOpenSigns(): void;
   /** The public web demo: there is no Meet call, so no call-audio messages, and the voice just plays aloud. */
   demo?: boolean;
   /** Show Speak and Cancel: only while the sentence waits for the signer ("Confirm first"). */
@@ -314,7 +315,6 @@ export const PanelCard = forwardRef<HTMLElement, PanelCardProps>(function PanelC
     onLanguageChange,
     onCollapse,
     onOpenSettings,
-    onOpenSigns,
     style,
     dragHandlers,
   },
@@ -514,47 +514,33 @@ export const PanelCard = forwardRef<HTMLElement, PanelCardProps>(function PanelC
               </div>
             )}
 
-            <div className="ap-voice-row">
-              <Toggle
-                label={demo ? 'Speak aloud' : 'Speak into the call'}
-                checked={!voiceMuted}
-                onCheckedChange={(on) => onVoiceMutedChange(!on)}
-              />
-              {onLanguageChange && (
-                <label className="ap-lang">
-                  <Icon name="globe" size={16} />
-                  <span className="au-sr-only">Translate Ola’s sentences into</span>
-                  <select
-                    value={language}
-                    onChange={(e) => onLanguageChange(e.target.value as LanguageCode)}
-                    title={language === 'en' ? 'Translate to…' : `Translating to ${language}`}
-                  >
-                    {LANGUAGES.map((l) => (
-                      <option key={l.code} value={l.code}>
-                        {l.code === 'en' ? 'No translation' : l.label}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-              )}
-            </div>
+            <Toggle
+              label={demo ? 'Speak aloud' : 'Speak into the call'}
+              checked={!voiceMuted}
+              onCheckedChange={(on) => onVoiceMutedChange(!on)}
+            />
           </>
         )}
       </div>
 
       <footer className="ap-foot">
-        <Button variant="ghost" icon="gear" iconOnly onClick={onOpenSettings}>
-          Settings
-        </Button>
-        <Button variant="ghost" icon="hand" iconOnly onClick={onOpenSigns}>
-          Supported signs
-        </Button>
-        <span className="ap-spacer" />
         {REPORT_URL && (
           <a className="ap-link" href={REPORT_URL} target="_blank" rel="noreferrer">
             Report a problem
           </a>
         )}
+        <span className="ap-spacer" />
+        {onLanguageChange && (
+          <LanguageMenu
+            label="Translate Ola’s sentences into"
+            value={language}
+            options={LANGUAGE_OPTIONS}
+            onValueChange={(v) => onLanguageChange(v as LanguageCode)}
+          />
+        )}
+        <Button variant="ghost" icon="gear" iconOnly onClick={onOpenSettings}>
+          Settings
+        </Button>
       </footer>
     </section>
   );

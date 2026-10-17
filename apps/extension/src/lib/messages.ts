@@ -4,13 +4,22 @@ import type {
   ErrorCode,
   RecognizeResponse,
   TranslateResponse,
+  VoiceCheckResponse,
 } from '@audion/shared';
 
 /** Messages from extension pages / content scripts to the service worker. Binary data travels as base64. */
 export type Request =
   | { type: 'api/health' }
   | { type: 'ui/openCameraSettings' }
-  | { type: 'api/speak'; text: string; voiceId: string; speed: number; language?: string }
+  | {
+      type: 'api/speak';
+      text: string;
+      voiceId: string;
+      speed: number;
+      language?: string;
+      pitch?: number;
+    }
+  | { type: 'api/voiceCheck'; text: string; voiceId: string; speed: number; pitch?: number }
   | { type: 'api/translate'; text: string; language: string }
   | { type: 'api/recognize'; clipBase64: string; mime: string; durationMs: number }
   | { type: 'api/compose'; signs: string[]; tone?: 'neutral' | 'polite'; context?: string }
@@ -59,7 +68,9 @@ export type ResponseFor<R extends Request> = R extends {
                 ? ({ ok: true } & ContextResponse) | Failure
                 : R extends { type: 'api/translate' }
                   ? ({ ok: true } & TranslateResponse) | Failure
-                  : never;
+                  : R extends { type: 'api/voiceCheck' }
+                    ? ({ ok: true } & VoiceCheckResponse) | Failure
+                    : never;
 
 export function toBase64(bytes: ArrayBuffer | Uint8Array): string {
   const u8 = bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes);

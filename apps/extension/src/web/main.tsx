@@ -22,6 +22,7 @@ import { MeetingContext } from '../panel/meetingContext';
 import { ScriptedCaptions } from './demoCaptions';
 import { createGemma, GEMMA_SIZE_GB, type GemmaStatus } from './gemmaComposer';
 import { LocalVoice } from './localVoice';
+import { Tour } from './tour/Tour';
 import { PipelineBus } from './pipeline/bus';
 import { ArchitectureView } from './pipeline/ArchitectureView';
 
@@ -54,6 +55,15 @@ async function send(req: Request, ctx: { tabId: string }) {
       kind: 'api',
       path: req.type,
       ok: !!(res as { ok?: boolean }).ok,
+      ms: Math.round(performance.now() - started),
+    });
+  }
+  if (req.type === 'api/voiceCheck' && res.ok) {
+    const check = res as unknown as { heard: string; mode: string };
+    bus.emit({
+      kind: 'voice-check',
+      heard: check.heard,
+      mode: check.mode,
       ms: Math.round(performance.now() - started),
     });
   }
@@ -372,21 +382,14 @@ if (browserWindow && maxButtons.length) {
 // The other people in the call are short looped videos. Anything that moves by itself for more than a few seconds
 // needs a way to stop it, and people who ask their system for less motion get them paused from the start.
 const callVideos = [...document.querySelectorAll<HTMLVideoElement>('[data-call-video]')];
-const pauseButton = document.getElementById('pause-videos') as HTMLButtonElement | null;
-if (callVideos.length && pauseButton) {
-  const setPaused = (paused: boolean) => {
-    pauseButton.setAttribute('aria-pressed', String(paused));
-    pauseButton.textContent = paused ? 'Play call videos' : 'Pause call videos';
-    for (const v of callVideos) {
-      if (paused) v.pause();
-      else void v.play().catch(() => {});
-    }
-  };
-  pauseButton.addEventListener('click', () =>
-    setPaused(pauseButton.getAttribute('aria-pressed') !== 'true'),
-  );
-  if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) setPaused(true);
-}
+const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+const setCallVideos = (play: boolean) => {
+  for (const v of callVideos) {
+    if (play) void v.play().catch(() => {});
+    else v.pause();
+  }
+};
+if (reducedMotion) setCallVideos(false);
 
 // The extension's icon in the browser bar: a black box with the Ola wordmark, like the widget.
 const toolbarMark = document.getElementById('toolbar-mark');
@@ -463,6 +466,8 @@ function ArchitectureHost() {
   const [open, setOpen] = useState(false);
   useEffect(() => {
     document.body.classList.toggle('arch-open', open);
+    // The call videos are hidden behind the diagram, so they rest while it is open.
+    setCallVideos(!open && !reducedMotion);
   }, [open]);
   useEffect(() => {
     const button = document.getElementById('open-architecture');
@@ -481,5 +486,20 @@ function ArchitectureHost() {
     />
   );
 }
+// The quick tour: welcome, a simulated extension page, a short setup, then guided steps in the call.
+const tourRoot = document.getElementById('tour-root');
+if (tourRoot) {
+  const q = new URLSearchParams(location.search).get('tour');
+  createRoot(tourRoot).render(
+    <Tour
+      panelStore={panelStore}
+      session={session}
+      shadow={shadow}
+      force={q === '1'}
+      disabled={q === '0'}
+    />,
+  );
+}
+
 const architectureRoot = document.getElementById('architecture-root');
 if (architectureRoot) createRoot(architectureRoot).render(<ArchitectureHost />);

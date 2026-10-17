@@ -21,6 +21,8 @@ const ALL_EVENTS: PipelineEvent[] = [
   { kind: 'sentence', sentence: 'Hello.', writer: 'Gemma, on this device', ms: 300 },
   { kind: 'sentence', sentence: 'Hello.', writer: 'Gemini, on Google Cloud', ms: 1900 },
   { kind: 'voice', voiceId: 'aria', ms: 640 },
+  { kind: 'voice-check', heard: 'Hello there.', ms: 900, mode: 'google' },
+  { kind: 'translate', language: 'es', ms: 800 },
   { kind: 'context', summary: 'A demo.', ms: 1800, chars: 200 },
   { kind: 'caption', speaker: 'Priya', text: 'Hi' },
   { kind: 'api', path: 'api/speak', ok: true, ms: 600 },
@@ -31,7 +33,7 @@ const ALL_EVENTS: PipelineEvent[] = [
 describe('architecture model', () => {
   it('has unique steps, and every edge and route points at things that exist', () => {
     expect(new Set(NODES.map((n) => n.id)).size).toBe(NODES.length);
-    expect(NODES).toHaveLength(11);
+    expect(NODES).toHaveLength(13);
     expect(new Set(EDGES.map((e) => e.id)).size).toBe(EDGES.length);
     for (const e of ALL_EVENTS) {
       for (const hop of routeFor(e)) expect(EDGE_BY_ID[hop.edge], hop.edge).toBeTruthy();
@@ -102,9 +104,14 @@ describe('architecture model', () => {
     expect(routeFor({ kind: 'voice', voiceId: 'a', ms: 1 }).map((h) => h.edge)).toEqual([
       'sent-api',
       'api-tts',
+      'prof-tts',
       'api-tts',
       'tts-spk',
     ]);
+    // The voice check: the voice profile goes to Text-to-Speech, the sample to Speech-to-Text, the text back.
+    const check = { kind: 'voice-check', heard: 'x', ms: 1, mode: 'google' } as const;
+    expect(routeFor(check).map((h) => h.edge)).toEqual(['prof-tts', 'tts-stt', 'stt-prof']);
+    expect(nodesFor(check)).toEqual(['profile', 'tts', 'stt']);
     const ctx = routeFor({ kind: 'context', summary: 's', ms: 1, chars: 1 });
     expect(ctx[0]!.edge).toBe('ctx-api');
     expect(ctx.at(-1)!.edge).toBe('ctx-sent');
@@ -248,18 +255,38 @@ describe('ArchitectureView', () => {
     });
     expect(dialog.getAttribute('aria-modal')).toBe('true');
     const steps = within(dialog).getAllByRole('button', { name: /on your device|on Google Cloud/ });
-    expect(steps).toHaveLength(11);
+    expect(steps).toHaveLength(13);
     expect(steps.every((s) => s.getAttribute('tabindex') === '0')).toBe(true);
     expect(document.activeElement).toBe(screen.getByRole('button', { name: 'Close' }));
     expect(document.body.style.overflow).toBe('hidden');
   });
 
-  it('closes with the Close button and with Escape', () => {
+  it('closes with the Close button and with Escape, after fading out', () => {
+    vi.useFakeTimers();
     const onClose = vi.fn();
     view(true, onClose);
     fireEvent.click(screen.getByRole('button', { name: 'Close' }));
+    expect(screen.getByRole('dialog').className).toContain('arch--out'); // fading, not yet gone
+    expect(onClose).not.toHaveBeenCalled();
+    act(() => void vi.advanceTimersByTime(400));
+    expect(onClose).toHaveBeenCalledTimes(1);
     fireEvent.keyDown(screen.getByRole('dialog'), { key: 'Escape' });
+    act(() => void vi.advanceTimersByTime(400));
     expect(onClose).toHaveBeenCalledTimes(2);
+    vi.useRealTimers();
+  });
+
+  it('closes at once when the visitor asks for less motion', () => {
+    vi.stubGlobal('matchMedia', (q: string) => ({
+      matches: q.includes('reduce'),
+      addEventListener() {},
+      removeEventListener() {},
+    }));
+    const onClose = vi.fn();
+    view(true, onClose);
+    fireEvent.click(screen.getByRole('button', { name: 'Close' }));
+    expect(onClose).toHaveBeenCalledTimes(1);
+    vi.unstubAllGlobals();
   });
 
   it('keeps Tab inside the dialog', () => {
@@ -376,5 +403,28 @@ describe('ArchitectureView', () => {
     rerender(<ArchitectureView bus={bus} open={false} onClose={() => {}} />);
     act(() => void vi.advanceTimersByTime(10_000));
     expect(bus.snapshot().feed).toEqual([]);
+  });
+});
+
+describe('the voice check in the live view', () => {
+  it('counts voice checks and says what Speech-to-Text heard, or that test mode checked nothing', () => {
+    const real = describeEvent({
+      kind: 'voice-check',
+      heard: 'Hello there.',
+      ms: 900,
+      mode: 'google',
+    });
+    expect(real).toContain('Speech-to-Text heard “Hello there.”');
+    const mock = describeEvent({ kind: 'voice-check', heard: 'x', ms: 1, mode: 'mock' });
+    expect(mock).toContain('test mode');
+    const stats = reduce(
+      emptyStats(),
+      { kind: 'voice-check', heard: 'Hello there.', ms: 900, mode: 'google' },
+      1,
+      () => 1,
+    );
+    expect(stats.voiceChecks).toBe(1);
+    expect(stats.lastVoiceCheck).toMatchObject({ heard: 'Hello there.' });
+    expect(apiName('api/voiceCheck')).toBe('Check the voice');
   });
 });

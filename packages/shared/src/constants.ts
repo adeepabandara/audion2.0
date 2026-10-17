@@ -4,6 +4,8 @@ export const MIN_SPEED = 0.75;
 export const MAX_SPEED = 1.5;
 export const TOKEN_TTL_SEC = 15 * 60;
 export const MAX_SPEAK_CHARS = 500;
+/** The line used to check how a voice is heard (the sample sentence is much shorter). */
+export const MAX_VOICE_CHECK_CHARS = 160;
 export const MAX_COMPOSE_SIGNS = 30;
 
 /** The exact prompt used when tuning; the tuned model expects it verbatim. */

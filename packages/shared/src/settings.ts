@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { LANGUAGE_CODES } from './languages.js';
 import { DEFAULT_PAUSE_MS, MAX_SPEED, MIN_SPEED } from './constants.js';
+import { MAX_PITCH, MIN_PITCH } from './voiceProfile.js';
 import { VOICE_IDS } from './voices.js';
 
 /**
@@ -10,6 +11,10 @@ import { VOICE_IDS } from './voices.js';
 export const settingsSchema = z.object({
   voiceId: z.enum(VOICE_IDS).catch('aria'),
   speed: z.number().min(MIN_SPEED).max(MAX_SPEED).catch(1),
+  /** Semitones the voice is raised or lowered (set by the voice setup). */
+  pitch: z.number().min(MIN_PITCH).max(MAX_PITCH).catch(0),
+  /** The voice setup questions have been answered (or skipped) once. */
+  voiceSetupDone: z.boolean().catch(false),
   speakMode: z.enum(['auto', 'confirm']).catch('auto'),
   captionSize: z.enum(['small', 'medium', 'large']).catch('medium'),
   captionPosition: z.enum(['bottom', 'top']).catch('bottom'),

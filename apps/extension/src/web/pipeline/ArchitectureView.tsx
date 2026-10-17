@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react';
 import { apiName, type PipelineBus, type Stats } from './bus';
+import { BADGES, CLOUD_ZONE_LOGO, LOGOS, WORDMARKS } from './logos';
 import {
   CANVAS,
   EDGE_BY_ID,
@@ -65,6 +66,8 @@ const ICONS: Record<IconKey, string> = {
   chip: 'M8 8h8v8H8z M10 3v3 M14 3v3 M10 18v3 M14 18v3 M3 10h3 M3 14h3 M18 10h3 M18 14h3',
   wave: 'M4 10v4 M8 6v12 M12 3v18 M16 7v10 M20 10v4',
   speaker: 'M4 10v4h4l5 4V6L8 10z M16 9a4 4 0 0 1 0 6 M18.5 6.5a8 8 0 0 1 0 11',
+  voice: 'M5 6h14 M5 12h14 M5 18h14 M9 4v4 M15 10v4 M8 16v4',
+  listen: 'M7 10a5 5 0 1 1 10 0c0 3-2.2 3.8-2.2 6a2.8 2.8 0 0 1-5.6 0 M9.8 10a2.2 2.2 0 0 1 4.4 0',
 };
 
 /** Keeps a live figure short enough for the node. */
@@ -103,6 +106,10 @@ function badge(id: NodeId, s: Stats): string {
       return s.service?.voices === 'mock' ? 'test tone (mock)' : `${s.voices} spoken`;
     case 'speaker':
       return s.lastVoice ? `last made in ${time(s.lastVoice.ms)}` : 'quiet';
+    case 'profile':
+      return s.lastVoice ? `last: ${s.lastVoice.voiceId}` : 'ready';
+    case 'stt':
+      return s.service?.voices === 'mock' ? 'test mode (mock)' : `${s.voiceChecks} checks`;
   }
 }
 
@@ -154,6 +161,16 @@ function liveLine(id: NodeId, s: Stats): string {
       return s.voices
         ? `${s.voices} sentence${s.voices > 1 ? 's' : ''} spoken.`
         : 'Nothing spoken yet.';
+    case 'profile':
+      return s.lastVoice
+        ? `Last sentence was spoken with the voice “${s.lastVoice.voiceId}”.`
+        : 'Set it up in Ola’s Settings, under Voice.';
+    case 'stt':
+      return s.lastVoiceCheck
+        ? s.lastVoiceCheck.mode === 'mock'
+          ? 'Test mode: the voice check does not really listen.'
+          : `Last check heard: “${s.lastVoiceCheck.heard || 'nothing'}” (${time(s.lastVoiceCheck.ms)}).`
+        : 'No voice check yet. Use “What will people hear?” in the voice setup.';
   }
 }
 
@@ -179,6 +196,7 @@ export function ArchitectureView({ bus, open, onClose }: ArchitectureViewProps) 
   const lastFrameDot = useRef(0);
   const timers = useRef<number[]>([]);
   const [playing, setPlaying] = useState(false);
+  const [closing, setClosing] = useState(false);
   const activeEdges = useMemo(() => new Set(packets.map((p) => p.edge)), [packets]);
 
   // Numbers and the feed: calm updates from the bus, only while the view is open.
@@ -309,10 +327,21 @@ export function ArchitectureView({ bus, open, onClose }: ArchitectureViewProps) 
     timers.current.push(window.setTimeout(() => setPlaying(false), 8800));
   };
 
+  // Closing fades the view out, and the meeting screen back in, before the view is removed.
+  useEffect(() => {
+    if (open) setClosing(false);
+  }, [open]);
+  const requestClose = () => {
+    if (reduced) return onClose();
+    setClosing(true);
+    document.body.classList.remove('arch-open');
+    timers.current.push(window.setTimeout(onClose, 380));
+  };
+
   const onKeyDown = (e: KeyboardEvent<HTMLDivElement>) => {
     if (e.key === 'Escape') {
       e.stopPropagation();
-      onClose();
+      requestClose();
       return;
     }
     if (e.key !== 'Tab' || !dialog.current) return;
@@ -349,7 +378,7 @@ export function ArchitectureView({ bus, open, onClose }: ArchitectureViewProps) 
 
   return (
     <div
-      className="arch"
+      className={`arch${closing ? ' arch--out' : ''}`}
       role="dialog"
       aria-modal="true"
       aria-labelledby="arch-title"
@@ -375,7 +404,7 @@ export function ArchitectureView({ bus, open, onClose }: ArchitectureViewProps) 
             type="button"
             className="arch__btn arch__btn--close"
             ref={closeButton}
-            onClick={onClose}
+            onClick={requestClose}
           >
             Close
           </button>
@@ -411,7 +440,7 @@ export function ArchitectureView({ bus, open, onClose }: ArchitectureViewProps) 
               x="20"
               y="56"
               width="1066"
-              height="696"
+              height="816"
               rx="26"
               className="arch-zone arch-zone--device"
             />
@@ -419,7 +448,7 @@ export function ArchitectureView({ bus, open, onClose }: ArchitectureViewProps) 
               x="1130"
               y="56"
               width="290"
-              height="696"
+              height="816"
               rx="26"
               className="arch-zone arch-zone--cloud"
             />
@@ -429,7 +458,16 @@ export function ArchitectureView({ bus, open, onClose }: ArchitectureViewProps) 
             <text x="48" y="112" className="arch-zone__sub">
               private, unless an arrow crosses the line
             </text>
-            <text x="1156" y="92" className="arch-zone__label">
+            <circle cx="1167" cy="86" r="11" className="arch-logo-disc" />
+            <image
+              href={CLOUD_ZONE_LOGO.src}
+              x="1159"
+              y="78"
+              width="16"
+              height="16"
+              aria-hidden="true"
+            />
+            <text x="1188" y="92" className="arch-zone__label">
               GOOGLE CLOUD
             </text>
             <text x="1156" y="112" className="arch-zone__sub">
@@ -487,19 +525,57 @@ export function ArchitectureView({ bus, open, onClose }: ArchitectureViewProps) 
                 }}
               >
                 <rect width={NODE_W} height={NODE_H} rx="16" className="arch-node__box" />
-                <circle cx="34" cy="31" r="17" className="arch-node__disc" />
-                <path
-                  d={ICONS[n.icon]}
-                  transform="translate(22 19)"
-                  className="arch-node__icon"
-                  fill="none"
+                <circle
+                  cx="34"
+                  cy="31"
+                  r="17"
+                  className={`arch-node__disc${LOGOS[n.id] ? ' arch-node__disc--logo' : ''}`}
                 />
+                {LOGOS[n.id] ? (
+                  <image
+                    href={LOGOS[n.id]!.src}
+                    x="22"
+                    y="19"
+                    width="24"
+                    height="24"
+                    aria-hidden="true"
+                  />
+                ) : (
+                  <path
+                    d={ICONS[n.icon]}
+                    transform="translate(22 19)"
+                    className="arch-node__icon"
+                    fill="none"
+                  />
+                )}
                 <text x="62" y="29" className="arch-node__title">
                   {n.title}
                 </text>
-                <text x="62" y="46" className="arch-node__sub">
-                  {n.subtitle}
-                </text>
+                {WORDMARKS[n.id] ? (
+                  <g aria-hidden="true">
+                    <rect x="60" y="34" width="104" height="18" rx="9" className="arch-logo-pill" />
+                    <svg
+                      x="68"
+                      y="37"
+                      width="88"
+                      height="12"
+                      viewBox={WORDMARKS[n.id]!.crop.join(' ')}
+                      preserveAspectRatio="xMidYMid meet"
+                    >
+                      <image href={WORDMARKS[n.id]!.src} width="960" height="540" />
+                    </svg>
+                  </g>
+                ) : (
+                  <text x="62" y="46" className="arch-node__sub">
+                    {n.subtitle}
+                  </text>
+                )}
+                {BADGES[n.id] && (
+                  <g aria-hidden="true">
+                    <circle cx={NODE_W - 20} cy="20" r="11" className="arch-logo-disc" />
+                    <image href={BADGES[n.id]!.src} x={NODE_W - 28} y="12" width="16" height="16" />
+                  </g>
+                )}
                 <line x1="16" y1="60" x2={NODE_W - 16} y2="60" className="arch-node__rule" />
                 <circle cx="21" cy="74" r="3" className="arch-node__dot" />
                 <text x="31" y="78" className="arch-node__badge">
@@ -587,6 +663,10 @@ export function ArchitectureView({ bus, open, onClose }: ArchitectureViewProps) 
               <div>
                 <dt>Spoken aloud</dt>
                 <dd>{stats.voices}</dd>
+              </div>
+              <div>
+                <dt>Voice checks</dt>
+                <dd>{stats.voiceChecks}</dd>
               </div>
               <div>
                 <dt>Meeting summaries</dt>

@@ -484,22 +484,6 @@
         stroke-linecap: round;
         stroke-linejoin: round;
       }
-      button.pause {
-        margin-right: 8px;
-        padding: 4px 12px;
-        font:
-          600 0.85rem Poppins,
-          sans-serif;
-        color: var(--fg);
-        background: transparent;
-        border: 1px solid var(--accent);
-        border-radius: 8px;
-        cursor: pointer;
-      }
-      button.pause:focus-visible {
-        outline: 3px solid var(--fg);
-        outline-offset: 3px;
-      }
       .toolbar {
         flex: none;
         display: flex;
@@ -546,29 +530,80 @@
         outline-offset: 1px;
       }
       .behind {
+        display: flex;
+        justify-content: center;
         max-width: 1180px;
-        margin: 14px auto 0;
+        margin: 20px auto 28px;
         padding: 0;
       }
       button.behind-btn {
+        position: relative;
+        overflow: hidden;
         display: inline-flex;
         align-items: center;
         gap: 10px;
-        padding: 12px 20px;
+        padding: 13px 24px;
         border: 0;
-        border-radius: 12px;
-        background: var(--primary);
+        border-radius: 999px;
+        background: linear-gradient(120deg, var(--primary), #0b5f59);
         color: var(--on-primary);
         font:
           600 1rem Poppins,
           sans-serif;
         cursor: pointer;
+        animation: behind-glow 3.2s ease-in-out infinite;
+        transition: transform 0.2s;
+      }
+      button.behind-btn:hover {
+        transform: translateY(-1px);
+      }
+      /* A band of light that sweeps across now and then. */
+      button.behind-btn::after {
+        content: '';
+        position: absolute;
+        inset: 0;
+        pointer-events: none;
+        background: linear-gradient(
+          110deg,
+          transparent 30%,
+          rgba(255, 255, 255, 0.45) 50%,
+          transparent 70%
+        );
+        transform: translateX(-120%);
+        animation: behind-shine 3.2s ease-in-out infinite;
+      }
+      @keyframes behind-shine {
+        0%,
+        55% {
+          transform: translateX(-120%);
+        }
+        100% {
+          transform: translateX(120%);
+        }
+      }
+      @keyframes behind-glow {
+        0%,
+        100% {
+          box-shadow: 0 0 0 0 rgba(45, 212, 191, 0);
+        }
+        50% {
+          box-shadow: 0 0 24px 2px rgba(45, 212, 191, 0.35);
+        }
       }
       button.behind-btn svg {
         fill: none;
         stroke: currentColor;
         stroke-width: 1.8;
         stroke-linecap: round;
+      }
+      @media (prefers-reduced-motion: reduce) {
+        button.behind-btn,
+        button.behind-btn::after {
+          animation: none;
+        }
+        button.behind-btn::after {
+          display: none;
+        }
       }
       button.behind-btn:focus-visible {
         outline: 3px solid var(--fg);
@@ -710,7 +745,7 @@
         .arch__svg {
           flex: none;
           height: auto;
-          aspect-ratio: 1440 / 780;
+          aspect-ratio: 1440 / 900;
         }
         .arch__side {
           overflow: visible;
@@ -934,6 +969,13 @@
           11px Poppins,
           sans-serif;
       }
+      .arch-node__disc--logo,
+      .arch-logo-disc,
+      .arch-logo-pill {
+        fill: #fff;
+        stroke: rgba(255, 255, 255, 0.5);
+        stroke-width: 1;
+      }
       .arch-node__rule {
         stroke: var(--arch-line);
         stroke-width: 1;
@@ -1051,8 +1093,9 @@
         font-variant-numeric: tabular-nums;
       }
       .arch__card--feed {
-        flex: 1;
+        flex: 1 1 0;
         min-height: 120px;
+        overflow: hidden;
       }
       .arch__feed {
         margin: 0;
@@ -1067,6 +1110,7 @@
         margin-right: 4px;
       }
       .arch__credit {
+        flex: none;
         margin: 0;
         color: var(--arch-muted);
         font-size: 0.72rem;
@@ -1094,9 +1138,66 @@
       .arch-open .arch {
         overflow: hidden;
       }
-      .sim-note {
-        margin: 8px 0 0;
-        font-size: 0.85rem;
+      /* The meeting screen dissolves while the architecture fades in over it, and the reverse on close. */
+      .stage {
+        transition:
+          opacity 0.55s ease,
+          filter 0.55s ease,
+          transform 0.55s ease;
+      }
+      body.arch-open .stage {
+        opacity: 0;
+        filter: blur(8px);
+        transform: scale(0.97);
+      }
+      .arch {
+        animation: arch-in 0.7s 0.12s cubic-bezier(0.2, 0.7, 0.2, 1) both;
+      }
+      .arch--out {
+        animation: arch-out 0.4s ease both;
+      }
+      .arch__diagram,
+      .arch__side {
+        animation: arch-rise 0.7s 0.35s ease both;
+      }
+      @keyframes arch-in {
+        from {
+          opacity: 0;
+          transform: scale(1.02);
+          filter: blur(10px);
+        }
+        to {
+          opacity: 1;
+          transform: none;
+          filter: none;
+        }
+      }
+      @keyframes arch-out {
+        to {
+          opacity: 0;
+          transform: scale(1.01);
+          filter: blur(8px);
+        }
+      }
+      @keyframes arch-rise {
+        from {
+          opacity: 0;
+          transform: translateY(10px);
+        }
+        to {
+          opacity: 1;
+          transform: none;
+        }
+      }
+      @media (prefers-reduced-motion: reduce) {
+        .stage,
+        .arch,
+        .arch--out,
+        .arch__diagram,
+        .arch__side {
+          animation: none;
+          transition: none;
+        }
       }
       body.max-open {
         overflow: hidden;
@@ -1261,16 +1362,10 @@
           See what’s really happening behind the scenes
         </button>
       </p>
-      <p class="sim-note">
-        <button type="button" class="pause" id="pause-videos" aria-pressed="false">
-          Pause call videos
-        </button>
-        This is a simulated call so you can try Ola without joining a meeting. The real thing is the
-        Chrome extension, which puts Ola into your Google Meet, Teams or Zoom call.
-      </p>
     </section>
 
     <div id="architecture-root"></div>
+    <div id="tour-root"></div>
     <script type="module" src="../src/web/main.tsx"></script>
   </body>
 </html>
