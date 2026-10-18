@@ -1,0 +1,16 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "jsx": "react-jsx",
+    "strict": true,
+    "noUncheckedIndexedAccess": true,
+    "noEmit": true,
+    "declaration": false,
+    "allowImportingTsExtensions": true,
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "types": ["chrome", "vite/client", "node"],
+    "baseUrl": ".",
+    "paths": { "@ext/*": ["../extension/src/*"] }
+  },
+  "include": ["src", "vite.config.ts", "vitest.config.ts", "../extension/src/**/*.d.ts"]
+}

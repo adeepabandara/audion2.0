@@ -52,7 +52,7 @@ pnpm --filter @audion/extension build                             # then in Chro
 The welcome page opens on install. In mock mode the "recognised" signs are scripted, so this is for trying the
 interface, not the accuracy.
 
-Without a call: `pnpm --filter @audion/extension harness`, `pnpm --filter @audion/fake-meet dev`, then open
+The public web demo has its own folder, `apps/demo` (see its README). Without a call: `pnpm --filter @audion/extension harness`, `pnpm --filter @audion/fake-meet dev`, then open
 `http://localhost:4173/?harness=1&fakecam=1&fakemic=1`.
 
 ## Using it

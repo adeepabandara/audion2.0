@@ -4,6 +4,6 @@ dist
 .wxt
 storybook-static
 tools/fake-meet/audion-harness.js
-dist-web
+apps/demo/dist
 apps/extension/public/models
 ui-components

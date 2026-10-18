@@ -273,7 +273,7 @@ Outside the repository (on purpose): `Test/audion-data/` holds the extracted han
 | Command                                                     | What it does                                                             |
 | ----------------------------------------------------------- | ------------------------------------------------------------------------ |
 | `pnpm build` · `typecheck` · `lint` · `test` · `check`      | The normal quality gates (`check` runs all)                              |
-| `pnpm --filter @audion/extension build:web`                 | Builds the public web demo into `dist-web/`                              |
+| `pnpm --filter @audion/demo build`                          | Builds the public web demo into `apps/demo/dist/`                        |
 | `pnpm --filter @audion/extension build:gallery`             | Rebuilds `ui-components/index.html`                                      |
 | `node apps/extension/scripts/gallery-shots.mjs`             | Retakes the gallery screenshots                                          |
 | `pnpm --filter @audion/api smoke <url>`                     | Checks a deployed site (page, tracker, health, session, sentence, voice) |

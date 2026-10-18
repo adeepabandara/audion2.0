@@ -1,6 +1,6 @@
-import { playAudio } from '../lib/audioPlayer';
-import type { Probe, VoiceChannel } from '../lib/voiceBridge';
-import type { SpeakResult } from '../lib/voiceProtocol';
+import { playAudio } from '@ext/lib/audioPlayer';
+import type { Probe, VoiceChannel } from '@ext/lib/voiceBridge';
+import type { SpeakResult } from '@ext/lib/voiceProtocol';
 
 /**
  * The web demo has no Meet call, so there is no call channel: Ola's voice just plays on the visitor's speakers.
