@@ -70,23 +70,23 @@ Camera
 
 ### 3.2 The on-device classifier
 
-- **What it is:** a 1-layer GRU (128 units) plus a linear layer, trained in PyTorch, exported as a 4 MB JSON file (`apps/extension/public/models/signclf.json`) and run by hand-written JavaScript (`apps/extension/src/lib/classifier.ts`). It adds no library.
-- **What it knows:** 28 classes: the 22 isolated signs plus 6 short two-sign phrases (please wait, thank you bye, yes please, no thank you, talk later, not now).
+- **What it is:** a 1-layer GRU (256 units) plus a linear layer, trained in PyTorch, exported as a 6.6 MB JSON file (`apps/extension/public/models/signclf.json`) and run by hand-written JavaScript (`apps/extension/src/lib/classifier.ts`). It adds no library.
+- **What it sees (since 2026-10-18):** for each of 48 frames, 132 numbers about the hands (shape and movement) plus 12 about **where the hands are on the body** (wrist and index fingertip from the nose, wrist from the shoulders). The body points come from **MediaPipe Pose Landmarker lite**, which the tracker page now runs next to the hand tracker (about 12 ms more per frame, measured on one GPU). If the pose model cannot load, hands are still tracked and the body numbers are zeros.
+- **What it knows:** 40 classes: the 22 isolated signs plus 18 two-sign phrases.
   The 22 signs: hello, bye, yes, no, please, thankyou, wait, why, who, where, now, later, tomorrow, time, finish, think, look, listen, talk, fine, same, not.
-- **Training data:** random clips from the owner's own bucket of **PopSign ASL v1.0** (CC BY 4.0, Georgia Tech and the Deaf Professional Arts Network): 100 train, 25 val and 25 test clips per sign, read-only. The video was turned into hand points by MediaPipe on a one-off Compute Engine VM and deleted immediately. Only hand points are kept, and they are outside the repository (`Test/audion-data/`).
-- **Phrases are synthetic.** The six phrase classes were built by joining two isolated-sign clips (`tools/signclf/synthesize_phrases.py`), not from real two-sign videos. Their very high test scores (up to 100%) are on that synthetic data and should not be read as real-world accuracy.
-- **Measured accuracy on clips it never saw (latest training run, 700 test clips):**
+- **Training data:** **PopSign ASL v1.0** (CC BY 4.0, Georgia Tech and the Deaf Professional Arts Network), up to 450 train, 100 val and 100 test clips per sign, split so that no signer is in two splits (31 / 8 / 8 signers). Turned into hand and body points by `tools/signclf/extract_pose.py`; only the points are kept, outside the repository (`Test/audion-data/landmarks_v2/`).
+- **Phrases are synthetic.** The phrase classes are built by joining two isolated-sign clips (`tools/signclf/synthesize_phrases.py`), not from real two-sign videos; their scores should not be read as real-world accuracy.
+- **Measured accuracy on clips from signers it never saw (3,959 test clips, `tools/signclf/compare.py`):**
 
-| Measure                                                | Result                                             |
-| ------------------------------------------------------ | -------------------------------------------------- |
-| Overall accuracy (all clips, no confidence limit)      | **86.7%** (validation 87.5%)                       |
-| At confidence ≥ 0.5 (what the app uses)                | answers **93%** of clips, **89.8%** of those right |
-| At confidence ≥ 0.7 (the training script's own choice) | answers 85%, 93.3% right                           |
-| At confidence ≥ 0.8                                    | answers 79%, 94.4% right                           |
+| Measure                                     | Previous model (hands only) | Current model (hands + body) |
+| ------------------------------------------- | --------------------------- | ---------------------------- |
+| Real single signs, all answers              | 82.4%                       | **90.4%**                    |
+| Real single signs at confidence ≥ 0.5 (app) | answers 88%, 88.3% right    | answers 93%, **94.0%** right |
+| All clips incl. synthetic phrases           | 86.8%                       | **92.9%**                    |
 
-- **Weak signs (test):** think 48%, tomorrow 56%, why 64%, later 72%, listen / talk / fine / not 76%. Common mix-ups: tomorrow → not, think → why, fine ↔ talk, listen → hello.
+- **Weak signs (test):** think 65%, why 68%, talk 74%, listen and tomorrow 80%. Common mix-ups: talk → fine, think → why, tomorrow → not, listen → hello.
 - **Not measured:** accuracy on a real webcam. The training videos are phone-style clips, so a real webcam may score lower.
-- **Parity:** a golden file of synthetic inputs checks that the JavaScript gives the same answers as PyTorch. Earlier, a one-off check on all real test clips gave identical answers.
+- **Parity:** a golden file of synthetic inputs (with synthetic body points) checks that the JavaScript gives the same answers as PyTorch; a one-off check on 400 real test clips gave identical answers.
 
 ### 3.3 Gemma 4 on the device (web demo)
 

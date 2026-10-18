@@ -84,7 +84,7 @@ export class IframeTracker implements HandTracker {
     } else if (msg.type === 'landmarks' && this.inFlight?.id === msg.id) {
       const { resolve } = this.inFlight;
       this.inFlight = null;
-      resolve({ t: msg.t, hands: msg.hands });
+      resolve({ t: msg.t, hands: msg.hands, pose: msg.pose ?? null });
     }
   }
 

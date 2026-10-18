@@ -180,6 +180,25 @@ def stitch_landmarks(
     return out_pts, out_seen
 
 
+def stitch_pose(seen_a, pose_a, pseen_a, seen_b, pose_b, pseen_b, num_trans):
+    """Body points (T,33,4) for the clip stitch_landmarks makes: the same spans of A and B, joined by a straight
+    blend over the transition frames. Returns (pose, pose_seen)."""
+    idx_a = np.flatnonzero(seen_a.any(axis=1))
+    idx_b = np.flatnonzero(seen_b.any(axis=1))
+    sa = slice(max(0, idx_a[0] - 2), idx_a[-1] + 1)
+    sb = slice(idx_b[0], min(len(seen_b), idx_b[-1] + 3))
+    qa, qb = pose_a[sa].astype(np.float32), pose_b[sb].astype(np.float32)
+    ma, mb = pseen_a[sa], pseen_b[sb]
+    trans = np.zeros((num_trans, 33, 4), np.float32)
+    tseen = np.zeros(num_trans, bool)
+    if ma[-1] and mb[0]:
+        for k in range(num_trans):
+            alpha = smoothstep((k + 1) / (num_trans + 1))
+            trans[k] = (1.0 - alpha) * qa[-1] + alpha * qb[0]
+            tseen[k] = True
+    return np.concatenate([qa, trans, qb]), np.concatenate([ma, tseen, mb])
+
+
 def is_valid_clip(f: Path) -> bool:
     try:
         d = np.load(f)
@@ -192,21 +211,24 @@ def is_valid_clip(f: Path) -> bool:
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--data", default="/Users/adeepabandara/Test/audion-data/landmarks")
+    ap.add_argument("--out", help="where to write the phrases (default: next to the signs in --data)")
+    ap.add_argument("--per-split", default="100,25,25", help="phrase clips per split: train,val,test")
     ap.add_argument("--seed", type=int, default=42)
     args = ap.parse_args()
 
     random.seed(args.seed)
     rng = np.random.default_rng(args.seed)
     base = Path(args.data)
+    out_base = Path(args.out) if args.out else base
 
-    target_counts = {"train": 100, "val": 25, "test": 25}
+    target_counts = dict(zip(SPLITS, (int(n) for n in args.per_split.split(","))))
     total_generated = 0
     for phrase_dir, sign_a, sign_b in PHRASES:
         print(f"\nSynthesizing phrase {phrase_dir} from {sign_a} + {sign_b}...")
         for split in SPLITS:
             dir_a = base / sign_a / split
             dir_b = base / sign_b / split
-            out_dir = base / phrase_dir / split
+            out_dir = out_base / phrase_dir / split
             out_dir.mkdir(parents=True, exist_ok=True)
 
             target = target_counts[split]
@@ -235,6 +257,12 @@ def main():
                 w = int(da["w"]) if "w" in da else 1944
                 h = int(da["h"]) if "h" in da else 2592
 
+                extra = {}
+                if "pose" in da.files and "pose" in db.files:  # clips from extract_pose.py
+                    pose, pose_seen = stitch_pose(da["seen"], da["pose"], da["pose_seen"],
+                                                  db["seen"], db["pose"], db["pose_seen"], trans_len)
+                    extra = dict(pose=pose.astype(np.float16), pose_seen=pose_seen)
+
                 out_name = f"{fa.stem}_+_{fb.stem}_{saved}.npz"
                 np.savez_compressed(
                     out_dir / out_name,
@@ -243,6 +271,7 @@ def main():
                     fps=fps,
                     w=w,
                     h=h,
+                    **extra,
                 )
                 saved += 1
             print(f"  [{split}] saved {saved} clips to {out_dir}")

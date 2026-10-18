@@ -5,13 +5,15 @@ import {
   classify,
   featurize,
   logits,
+  poseGrid,
   softmax,
   toGrid,
   toSlots,
   type ClassifierModel,
+  type PoseFrame,
   type SlotFrame,
 } from './classifier';
-import type { Hand, LandmarkFrame } from './landmarks';
+import type { BodyPoint, Hand, LandmarkFrame } from './landmarks';
 
 const M = model as ClassifierModel;
 
@@ -28,10 +30,27 @@ function framesOf(c: (typeof golden)[number]): SlotFrame[] {
   ]);
 }
 
+/** The golden file's body points as the per-frame pose the classifier takes (null where no person was found). */
+function poseOf(c: (typeof golden)[number]): PoseFrame[] {
+  return c.pose.map((pts, t) =>
+    c.pose_seen[t]
+      ? pts.map(
+          ([x, y, z, visibility]): BodyPoint => ({ x: x!, y: y!, z: z!, visibility: visibility! }),
+        )
+      : null,
+  );
+}
+
 describe('classifier parity with the PyTorch model (synthetic golden inputs)', () => {
+  it('is the model trained with body points (144 numbers per frame)', () => {
+    expect(M.pose).toBe(true);
+    expect(M.features).toBe(144);
+    expect(golden.every((c) => c.features[0]!.length === M.features)).toBe(true);
+  });
+
   golden.forEach((c, i) => {
-    it(`case ${i}: same features and same logits`, () => {
-      const f = featurize(framesOf(c), c.w / c.h)!;
+    it(`case ${i} (${c.pose_seen.filter(Boolean).length} frames with a body): same features and same logits`, () => {
+      const f = featurize(framesOf(c), c.w / c.h, M.steps, poseOf(c))!;
       const expected = c.features.flat();
       expect(f.length).toBe(expected.length);
       let worst = 0;
@@ -46,7 +65,7 @@ describe('classifier parity with the PyTorch model (synthetic golden inputs)', (
 describe('classify', () => {
   it('gives one of the 40 signs with a confidence between 0 and 1', () => {
     const c = golden[0]!;
-    const r = classify(M, framesOf(c), c.w / c.h)!;
+    const r = classify(M, framesOf(c), c.w / c.h, poseOf(c))!;
     expect(M.signs).toContain(r.sign);
     expect(r.confidence).toBeGreaterThan(0);
     expect(r.confidence).toBeLessThanOrEqual(1);
@@ -64,6 +83,28 @@ describe('classify', () => {
     expect(r.frames).toBe(frames.filter((f) => f[0] || f[1]).length);
     const most = Math.max(...frames.map((f) => (f[0] ? 1 : 0) + (f[1] ? 1 : 0)));
     expect(r.hands).toBe(most);
+  });
+
+  it('uses the body points: the answer changes without them, and no body equals all-null frames', () => {
+    const c = golden[0]!;
+    const withBody = logits(M, featurize(framesOf(c), c.w / c.h, M.steps, poseOf(c))!);
+    const without = classify(M, framesOf(c), c.w / c.h)!;
+    const noneGiven = logits(
+      M,
+      featurize(
+        framesOf(c),
+        c.w / c.h,
+        M.steps,
+        c.pose.map(() => null),
+      )!,
+    );
+    expect(softmax(noneGiven)[M.signs.indexOf(without.sign)]).toBeCloseTo(without.confidence, 6);
+    expect(withBody.some((v, k) => Math.abs(v - noneGiven[k]!) > 1e-3)).toBe(true);
+  });
+
+  it('a hands-only model (no "pose") still gets the 132 numbers per frame', () => {
+    const c = golden[0]!;
+    expect(featurize(framesOf(c), c.w / c.h, M.steps)!.length).toBe(M.steps * 132);
   });
 
   it('refuses a sign with fewer than 4 frames showing a hand', () => {
@@ -99,5 +140,25 @@ describe('frame preparation', () => {
     expect(grid.length).toBe(11);
     expect(grid.every((f) => f[0] !== null)).toBe(true);
     expect(toGrid(frames, 5000, 6000)).toEqual([]);
+  });
+
+  it('puts the body points on the same grid frames as the hands', () => {
+    const body = (x: number): BodyPoint[] =>
+      Array.from({ length: 33 }, () => ({ x, y: 0.4, z: 0, visibility: 0.9 }));
+    const frames: LandmarkFrame[] = [0, 20, 90, 130, 400, 700].map((t, i) => ({
+      t,
+      hands: [h(t / 2000)],
+      pose: i === 2 ? null : body(t / 1000),
+    }));
+    const hands = toGrid(frames, 20, 700);
+    const pose = poseGrid(frames, 20, 700);
+    expect(pose.length).toBe(hands.length);
+    pose.forEach((p, k) => {
+      const src = frames.find(
+        (f) => f.hands[0]!.landmarks[0]!.x === hands[k]![0]!.landmarks[0]!.x,
+      )!;
+      expect(p).toBe(src.pose ?? null);
+    });
+    expect(poseGrid([{ t: 0, hands: [] }], 0, 10)).toEqual([null]);
   });
 });

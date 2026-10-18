@@ -18,7 +18,7 @@ const mediapipeDir = dirname(fromExtension.resolve('@mediapipe/tasks-vision'));
 // The Gemma runtime's WebAssembly files (the package has no "exports" entry for them, so find its folder via package.json).
 const litertWasmDir = join(dirname(fromExtension.resolve('@litert-lm/core/package.json')), 'wasm');
 
-/** MediaPipe's WASM runtime and the hand model, served next to tracker.html (the tracker loads them by relative URL). */
+/** MediaPipe's WASM runtime and the hand and pose models, served next to tracker.html (the tracker loads them by relative URL). */
 function copyMediaPipe(): Plugin {
   return {
     name: 'copy-mediapipe',
@@ -35,10 +35,9 @@ function copyMediaPipe(): Plugin {
       cpSync(join(extension, 'public/icon/48.png'), join(out, 'favicon.ico')); // browsers ask for /favicon.ico by default
       // The on-device sign classifier's weights (the tracker loads models/signclf.json next to tracker.html).
       cpSync(join(extension, 'public/models/signclf.json'), join(out, 'models/signclf.json'));
-      cpSync(
-        join(extension, 'public/models/hand_landmarker.task'),
-        join(out, 'models/hand_landmarker.task'),
-      );
+      for (const f of ['hand_landmarker.task', 'pose_landmarker_lite.task']) {
+        cpSync(join(extension, 'public/models', f), join(out, 'models', f));
+      }
     },
   };
 }
