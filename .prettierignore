@@ -6,3 +6,4 @@ storybook-static
 tools/fake-meet/audion-harness.js
 dist-web
 apps/extension/public/models
+ui-components

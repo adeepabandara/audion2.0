@@ -331,12 +331,26 @@ export const EDGE_BY_ID = Object.fromEntries(EDGES.map((e) => [e.id, e])) as Rec
   PipelineEdge
 >;
 
+/** What the on-device model saw for one sign (see `SignDetail` in panel/session.ts). */
+export type SignDetail = {
+  top?: Array<{ sign: string; confidence: number }>;
+  frames?: number;
+  hands?: number;
+};
+
 /** Everything that can happen, as the live view sees it. */
 export type PipelineEvent =
   | { kind: 'frame'; hands: number }
   | { kind: 'signing'; on: boolean }
-  | { kind: 'device'; sign: string; confidence: number; ms: number }
-  | { kind: 'device-unsure'; sign: string; confidence: number; ms: number }
+  | ({ kind: 'device'; sign: string; confidence: number; ms: number } & SignDetail)
+  | ({
+      kind: 'device-unsure';
+      sign: string;
+      confidence: number;
+      ms: number;
+      threshold?: number;
+      then?: 'cloud' | 'retry';
+    } & SignDetail)
   | { kind: 'cloud'; role: 'check' | 'answer'; sign: string; ms: number; deviceSign?: string }
   | { kind: 'sentence'; sentence: string; writer: string; ms: number }
   | { kind: 'translate'; language: string; ms: number }

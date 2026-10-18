@@ -1,19 +1,28 @@
 import '@audion/ui/styles.css';
-import { Wordmark } from '@audion/ui';
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import type { AudionSession } from '../../panel/session';
 import type { PanelStore } from '../../panel/store';
+import {
+  FINISHED,
+  FRESH,
+  getBrowser,
+  setBrowser,
+  subscribeBrowser,
+  useBrowser,
+} from '../browser/browserState';
 import { Coach } from './Coach';
-import { SetupFlow } from './SetupFlow';
-import { COACH_STEPS } from './steps';
+import { SignGuide } from './SignGuide';
+import { COACH_STEPS, type Wait } from './steps';
 import { StorePage } from './StorePage';
 import './tour.css';
 
 /**
- * The quick tour for the demo: a welcome, the (simulated) extension page, a short setup, then guided steps in the
- * call that point at the real widget and wait for the visitor to try each thing.
+ * The quick tour for the demo. It follows what a signer does, in three chapters: install the extension (add it from the
+ * store, pin it), join a meeting (Ola appears by itself), and use Ola (open it, turn it on, camera ready, sign, hear the
+ * sentence). The browser window on the page changes with it, and each step zooms in on the thing it points at.
  */
-type Stage = 'idle' | 'welcome' | 'store' | 'setup' | 'coach';
+type Stage = 'idle' | 'welcome' | 'coach';
 
 const KEY = 'ola:tour';
 const remember = (v: string) => {
@@ -30,7 +39,6 @@ const seen = () => {
     return false;
   }
 };
-
 export interface TourProps {
   panelStore: { useStore: PanelStore };
   session: Pick<AudionSession, 'getState' | 'subscribe'>;
@@ -48,20 +56,34 @@ export function Tour({ panelStore, session, shadow, force = false, disabled = fa
   );
   const [index, setIndex] = useState(0);
   const [done, setDone] = useState(false);
-  const welcomeButton = useRef<HTMLButtonElement>(null);
+  const [stuck, setStuck] = useState<string | undefined>();
+  /** The "Try these signs" guide: it opens at the signing step and stays until the visitor closes it. */
+  const [guideOpen, setGuideOpen] = useState(false);
+  const startButton = useRef<HTMLButtonElement>(null);
+  const browser = useBrowser();
 
+  /** The window ends in its finished state, so what is left on the page is the working demo. */
   const finish = useCallback((how: 'done' | 'skipped') => {
     remember(how);
+    setBrowser(FINISHED);
     setStage('idle');
   }, []);
-  const start = () => {
+  const welcome = () => {
     setIndex(0);
     setDone(false);
     setStage('welcome');
   };
+  /** Nothing installed yet, on the store page: the tour starts where a new user would. */
+  const begin = () => {
+    setDone(false);
+    setStuck(undefined);
+    setBrowser(FRESH);
+    setIndex(0);
+    setStage('coach');
+  };
 
   useEffect(() => {
-    if (stage === 'welcome') welcomeButton.current?.focus();
+    if (stage === 'welcome') startButton.current?.focus();
   }, [stage]);
 
   // The page is covered while the tour owns the screen.
@@ -71,29 +93,101 @@ export function Tour({ panelStore, session, shadow, force = false, disabled = fa
   }, [stage]);
 
   const find = useCallback(
-    (selector: string): HTMLElement | null =>
-      document.querySelector<HTMLElement>(selector) ?? shadow.querySelector<HTMLElement>(selector),
+    (selectors: string | string[]): HTMLElement | null => {
+      for (const q of Array.isArray(selectors) ? selectors : [selectors]) {
+        const el = document.querySelector<HTMLElement>(q) ?? shadow.querySelector<HTMLElement>(q);
+        if (el) return el;
+      }
+      return null;
+    },
     [shadow],
   );
 
   const step = COACH_STEPS[index]!;
+
+  useEffect(() => {
+    if (stage === 'coach' && step.guide) setGuideOpen(true);
+  }, [stage, step]);
+
+  // A new step starts fresh: nothing is "done" or in the way yet. (This runs before the step's own check below.)
+  useEffect(() => {
+    setDone(false);
+    setStuck(undefined);
+  }, [index]);
+
+  // The browser window shows the page this step happens on.
+  useEffect(() => {
+    if (stage === 'coach') setBrowser({ scene: step.scene });
+  }, [stage, step]);
+
   const next = useCallback(() => {
     setDone(false);
+    setStuck(undefined);
+    // Passing a step by that the visitor did not do leaves things as if they had, so the next step still makes sense.
+    if (step.waitFor === 'installed') setBrowser({ installed: true });
+    if (step.waitFor === 'pinned') setBrowser({ installed: true, pinned: true, menuOpen: false });
+    // Leaving the voice questions closes Settings again, so the next step sees the camera and the sentence.
+    if (step.id === 'voice-pick') find('.au-drawer .au-drawer__head button')?.click();
     if (index >= COACH_STEPS.length - 1) finish('done');
     else setIndex((i) => i + 1);
-  }, [index, finish]);
+  }, [index, step, finish, find]);
 
   // Steps that wait for the visitor: move on a moment after they have done the thing (or at once if already done).
   useEffect(() => {
     if (stage !== 'coach' || !step.waitFor) return;
+    const wanted: Wait = step.waitFor;
     const met = () => {
-      if (step.waitFor === 'panel-open') return panelStore.useStore.getState().expanded;
+      const b = getBrowser();
       const s = session.getState();
-      if (step.waitFor === 'ola-on') return s.on;
-      return s.chips.length > 0 || s.sentence !== null;
+      switch (wanted) {
+        case 'installed':
+          return b.installed;
+        case 'pinned':
+          return b.pinned;
+        case 'joined':
+          return b.scene === 'call';
+        case 'panel-open':
+          return panelStore.useStore.getState().expanded;
+        case 'ola-on':
+          return s.on;
+        case 'ready':
+          return s.on && !s.starting && !s.problems.includes('cameraBlocked');
+        case 'settings-open':
+          return find('.au-drawer') !== null;
+        case 'voice-setup':
+          return find('.au-drawer .vs') !== null;
+        case 'voice-saved':
+          return seenSetup && find('.au-drawer .vs') === null;
+        case 'sentence':
+          return s.sentence !== null || s.speaking;
+        case 'spoken':
+          return voiceHeard || (sawSpeaking && !s.speaking);
+      }
     };
+    // "Ola has said it": the voice started and then ended. If that is missed (a short sentence can finish before this
+    // step shows) or never happens (no sound), the step moves on after a few seconds instead of waiting forever.
+    let seenSetup = false;
+    let sawSpeaking = false;
+    let voiceHeard = false;
+    const giveUp =
+      wanted === 'spoken'
+        ? window.setTimeout(() => {
+            voiceHeard = true;
+            check();
+          }, 7000)
+        : undefined;
     let timer: number | undefined;
     const check = () => {
+      if (session.getState().speaking) sawSpeaking = true;
+      if (find('.au-drawer .vs')) seenSetup = true;
+      const blocked =
+        (wanted === 'ola-on' || wanted === 'ready') &&
+        session.getState().problems.includes('cameraBlocked');
+      setStuck(
+        blocked
+          ? 'The camera is blocked. Allow it in your browser, then choose Try again in Ola.'
+          : undefined,
+      );
       if (timer === undefined && met()) {
         setDone(true);
         timer = window.setTimeout(next, 900);
@@ -102,12 +196,23 @@ export function Tour({ panelStore, session, shadow, force = false, disabled = fa
     check();
     const offPanel = panelStore.useStore.subscribe(check);
     const offSession = session.subscribe(check);
+    // The browser window's own state (installed, pinned, joined) is part of what some steps wait for.
+    const offBrowser = subscribeBrowser(check);
+    // Settings and the voice questions are drawn by the widget itself, so watch the widget for them.
+    const watch = new MutationObserver(check);
+    if (wanted.startsWith('voice') || wanted === 'settings-open')
+      watch.observe(shadow, { childList: true, subtree: true });
     return () => {
       offPanel();
       offSession();
+      offBrowser();
+      watch.disconnect();
       if (timer !== undefined) window.clearTimeout(timer);
+      if (giveUp !== undefined) window.clearTimeout(giveUp);
     };
-  }, [stage, step, panelStore, session, next]);
+  }, [stage, step, panelStore, session, next, find, shadow]);
+
+  const storeRoot = stage === 'coach' ? document.getElementById('scene-store') : null;
 
   return (
     <>
@@ -122,49 +227,37 @@ export function Tour({ panelStore, session, shadow, force = false, disabled = fa
               if (e.key === 'Escape') finish('skipped');
             }}
           >
-            <Wordmark size={44} />
+            <img
+              src="/icon/128.png"
+              alt="Ola"
+              width={72}
+              height={72}
+              className="tour-modal__icon"
+            />
             <h1 id="tour-welcome">Welcome to Ola</h1>
             <p>
-              Ola gives Deaf and hard-of-hearing signers a voice in video calls. Sign to your
-              camera, and Ola speaks for you, in a voice you choose.
+              Ola is a browser extension that gives signers a voice in video calls. See how it works
+              in about a minute.
             </p>
-            <p className="tour-modal__sub">
-              A two-minute guided tour. You can skip it at any time.
-            </p>
-            <div className="tour-modal__actions">
-              <button
-                ref={welcomeButton}
-                type="button"
-                className="tour-btn tour-btn--lg"
-                onClick={() => setStage('store')}
-              >
-                Try prototype
-              </button>
-              <button
-                type="button"
-                className="tour-btn tour-btn--ghost"
-                onClick={() => finish('skipped')}
-              >
-                Explore on my own
-              </button>
-            </div>
+            <button
+              ref={startButton}
+              type="button"
+              className="tour-btn tour-btn--lg"
+              onClick={begin}
+            >
+              Start the tour
+            </button>
+            <button type="button" className="tour-link" onClick={() => finish('skipped')}>
+              Explore on my own
+            </button>
           </div>
         </div>
       )}
 
-      {stage === 'store' && (
-        <StorePage onAdded={() => setStage('setup')} onClose={() => finish('skipped')} />
-      )}
-
-      {stage === 'setup' && (
-        <SetupFlow
-          onDone={() => {
-            setIndex(0);
-            setStage('coach');
-          }}
-          onSkip={() => finish('skipped')}
-        />
-      )}
+      {/* The extension's store page is a tab inside the browser window. */}
+      {storeRoot &&
+        browser.storeTab &&
+        createPortal(<StorePage onAdded={() => setBrowser({ installed: true })} />, storeRoot)}
 
       {stage === 'coach' && (
         <Coach
@@ -173,16 +266,26 @@ export function Tour({ panelStore, session, shadow, force = false, disabled = fa
           total={COACH_STEPS.length}
           find={find}
           done={done}
+          stuck={stuck}
           onNext={next}
-          onBack={() => setIndex((i) => Math.max(0, i - 1))}
           onSkip={() => finish('skipped')}
         />
       )}
 
+      {/* Not part of the tour: it is still there after it ends, until the visitor closes it. */}
+      {!disabled && <SignGuide open={guideOpen} onClose={() => setGuideOpen(false)} />}
+
       {stage === 'idle' && !disabled && (
-        <button type="button" className="tour-launch" onClick={start}>
-          Take the tour
-        </button>
+        <div className="tour-launchers">
+          <button type="button" className="tour-launch" onClick={welcome}>
+            Take the tour
+          </button>
+          {!guideOpen && (
+            <button type="button" className="tour-launch" onClick={() => setGuideOpen(true)}>
+              Signs to try
+            </button>
+          )}
+        </div>
       )}
     </>
   );

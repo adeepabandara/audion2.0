@@ -7,6 +7,7 @@ export default tseslint.config(
     ignores: [
       '**/dist/**',
       '**/dist-web/**',
+      'ui-components/**',
       '**/.output/**',
       '**/.wxt/**',
       '**/node_modules/**',

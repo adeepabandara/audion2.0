@@ -13,16 +13,21 @@ import torch.nn as nn
 
 from features import FEATURES, STEPS, featurize, mirror
 
-SIGNS = ["hello", "bye", "yes", "no", "please", "thankyou", "wait", "why", "who", "where", "now", "later",
-         "tomorrow", "time", "finish", "think", "look", "listen", "talk", "fine", "same", "not"]
-HIDDEN = 128
+SIGNS = [
+    "hello", "bye", "yes", "no", "please", "thankyou", "wait", "why", "who", "where", "now", "later",
+    "tomorrow", "time", "finish", "think", "look", "listen", "talk", "fine", "same", "not",
+    "please_wait", "thankyou_bye", "yes_please", "no_thankyou", "talk_later", "not_now",
+    "why_not", "think_same", "fine_thankyou", "talk_tomorrow", "think_not", "finish_now",
+    "tomorrow_time", "time_now", "who_where", "look_listen", "wait_later", "hello_fine",
+]
+HIDDEN = 256
 
 
 class Net(nn.Module):
-    def __init__(self):
+    def __init__(self, hidden=HIDDEN):
         super().__init__()
-        self.gru = nn.GRU(FEATURES, HIDDEN, batch_first=True)
-        self.out = nn.Linear(HIDDEN, len(SIGNS))
+        self.gru = nn.GRU(FEATURES, hidden, batch_first=True)
+        self.out = nn.Linear(hidden, len(SIGNS))
 
     def forward(self, x):
         _, h = self.gru(x)  # h: (1, B, H), the state after the last frame

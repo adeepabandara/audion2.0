@@ -30,6 +30,59 @@ const ALL_EVENTS: PipelineEvent[] = [
   { kind: 'service', mode: 'live', modelId: 'gemini', voices: 'google' },
 ];
 
+describe('the live log says what the model saw', () => {
+  const guess = { kind: 'device', sign: 'listen', confidence: 0.62, ms: 4 } as const;
+
+  it('lists what else it considered, and how much it saw', () => {
+    const text = describeEvent({
+      ...guess,
+      top: [
+        { sign: 'listen', confidence: 0.62 },
+        { sign: 'hello', confidence: 0.21 },
+        { sign: 'talk', confidence: 0.09 },
+      ],
+      frames: 14,
+      hands: 1,
+    })!;
+    expect(text).toContain('“listen”');
+    expect(text).toContain('Also considered: hello 21%, talk 9%.');
+    expect(text).toContain('It saw 14 frames with 1 hand.');
+    expect(text).not.toContain('Both hands');
+    expect(text).not.toContain('very short');
+  });
+
+  it('says so when both hands were in view and the model was not sure', () => {
+    const text = describeEvent({ ...guess, frames: 20, hands: 2 })!;
+    expect(text).toContain('with 2 hands');
+    expect(text).toContain('keep the other hand out of the picture');
+  });
+
+  it('says so when the sign was very short and the model was not sure', () => {
+    const text = describeEvent({ ...guess, frames: 7, hands: 1 })!;
+    expect(text).toContain('very short sign');
+  });
+
+  it('keeps the hints to itself when the model was sure, and when it knows nothing extra', () => {
+    expect(describeEvent({ ...guess, confidence: 0.95, frames: 7, hands: 2 })).not.toContain(
+      'Both hands',
+    );
+    expect(describeEvent(guess)).toBe('Sign “listen” named on this device (62% sure, 4 ms).');
+    const unsure = describeEvent({
+      kind: 'device-unsure',
+      sign: 'no',
+      confidence: 0.4,
+      ms: 5,
+      threshold: 0.5,
+      then: 'retry',
+      frames: 6,
+      hands: 2,
+    })!;
+    expect(unsure).toContain('not accepted');
+    expect(unsure).toContain('keep the other hand out of the picture');
+    expect(unsure).toContain('very short sign');
+  });
+});
+
 describe('architecture model', () => {
   it('has unique steps, and every edge and route points at things that exist', () => {
     expect(new Set(NODES.map((n) => n.id)).size).toBe(NODES.length);
@@ -248,16 +301,15 @@ describe('ArchitectureView', () => {
     expect(container.firstChild).toBeNull();
   });
 
-  it('opens as a labelled dialog with every step as a keyboard-reachable button and focus on Close', () => {
+  it('opens as a labelled region (under the page tabs) with every step as a keyboard-reachable button', () => {
     view();
-    const dialog = screen.getByRole('dialog', {
+    const dialog = screen.getByRole('region', {
       name: /behind the scenes/i,
     });
-    expect(dialog.getAttribute('aria-modal')).toBe('true');
+    expect(dialog.getAttribute('aria-modal')).toBeNull();
     const steps = within(dialog).getAllByRole('button', { name: /on your device|on Google Cloud/ });
     expect(steps).toHaveLength(13);
     expect(steps.every((s) => s.getAttribute('tabindex') === '0')).toBe(true);
-    expect(document.activeElement).toBe(screen.getByRole('button', { name: 'Close' }));
     expect(document.body.style.overflow).toBe('hidden');
   });
 
@@ -265,12 +317,16 @@ describe('ArchitectureView', () => {
     vi.useFakeTimers();
     const onClose = vi.fn();
     view(true, onClose);
-    fireEvent.click(screen.getByRole('button', { name: 'Close' }));
-    expect(screen.getByRole('dialog').className).toContain('arch--out'); // fading, not yet gone
+    fireEvent.click(screen.getByRole('button', { name: 'Back to prototype' }));
+    expect(screen.getByRole('region', { name: /behind the scenes/i }).className).toContain(
+      'arch--out',
+    ); // fading, not yet gone
     expect(onClose).not.toHaveBeenCalled();
     act(() => void vi.advanceTimersByTime(400));
     expect(onClose).toHaveBeenCalledTimes(1);
-    fireEvent.keyDown(screen.getByRole('dialog'), { key: 'Escape' });
+    fireEvent.keyDown(screen.getByRole('region', { name: /behind the scenes/i }), {
+      key: 'Escape',
+    });
     act(() => void vi.advanceTimersByTime(400));
     expect(onClose).toHaveBeenCalledTimes(2);
     vi.useRealTimers();
@@ -284,20 +340,9 @@ describe('ArchitectureView', () => {
     }));
     const onClose = vi.fn();
     view(true, onClose);
-    fireEvent.click(screen.getByRole('button', { name: 'Close' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Back to prototype' }));
     expect(onClose).toHaveBeenCalledTimes(1);
     vi.unstubAllGlobals();
-  });
-
-  it('keeps Tab inside the dialog', () => {
-    view();
-    const dialog = screen.getByRole('dialog');
-    const focusable = [...dialog.querySelectorAll<HTMLElement>('button, [tabindex="0"]')];
-    focusable.at(-1)!.focus();
-    fireEvent.keyDown(dialog, { key: 'Tab' });
-    expect(document.activeElement).toBe(focusable[0]);
-    fireEvent.keyDown(dialog, { key: 'Tab', shiftKey: true });
-    expect(document.activeElement).toBe(focusable.at(-1));
   });
 
   it('describes a step on hover or focus, and keeps it open when chosen with Enter', () => {
