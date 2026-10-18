@@ -20,6 +20,7 @@ import { playAudio, type Playback } from '../lib/audioPlayer';
 import { fromBase64, send } from '../lib/messages';
 import { getSettingsStore } from '../lib/settings';
 import { SAMPLE_LINE } from './VoicePicker';
+import { ShareVoice } from './ShareVoice';
 import { VoiceVisual } from './VoiceVisual';
 
 const QUESTIONS: Array<{
@@ -121,6 +122,7 @@ export function VoiceSetup({ onSaved }: VoiceSetupProps) {
   const [error, setError] = useState<string | null>(null);
   const [check, setCheck] = useState<Check>({ state: 'idle' });
   const [saved, setSaved] = useState(false);
+  const [sharing, setSharing] = useState(false);
   const playback = useRef<Playback | null>(null);
   const raf = useRef(0);
 
@@ -270,6 +272,9 @@ export function VoiceSetup({ onSaved }: VoiceSetupProps) {
         <Button variant="secondary" icon={playing ? 'pause' : 'play'} onClick={() => void play()}>
           {playing ? 'Stop' : 'Hear it'}
         </Button>
+        <Button variant="secondary" icon="share" onClick={() => setSharing(true)}>
+          Ask someone to listen
+        </Button>
         <Button
           variant="secondary"
           icon="check-circle"
@@ -339,6 +344,20 @@ export function VoiceSetup({ onSaved }: VoiceSetupProps) {
           </span>
         )}
       </div>
+      <ShareVoice
+        open={sharing}
+        onOpenChange={setSharing}
+        profile={profile}
+        onProfileChange={(p) => {
+          setTweak({ pitch: p.pitch, speed: p.speed });
+          changed();
+        }}
+        onAnotherVoice={() => {
+          setIndex((i) => (i + 1) % Math.max(1, suggestions.length));
+          setTweak({});
+          changed();
+        }}
+      />
     </div>
   );
 }
