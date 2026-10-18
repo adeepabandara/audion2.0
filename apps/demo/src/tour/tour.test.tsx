@@ -95,6 +95,7 @@ describe('the guided steps', () => {
     expect(zoom.open).toBe(1);
     expect(zoom.on).toBe(1);
     expect(zoom.ready).toBe(1);
+    expect(zoom.voice).toBe(1); // the tall Settings drawer: a zoom could push the button off a short screen
   });
 
   it('happens on the right page of the browser window', () => {
@@ -1018,6 +1019,25 @@ describe('revealInScroller', () => {
     host.remove();
   });
 
+  it('counts only the part of the panel that is on screen (a short screen cuts the panel off)', () => {
+    // panel 100..700 on a 600 px screen: only 100..600 is visible; a button at 620 is off screen
+    const { host, panel, button } = setup(620);
+    panel.scrollTop = 0;
+    expect(revealInScroller(button, 600)).toBe(true);
+    // centred in the visible 100..600: 620 - 100 - (500 - 60) / 2 = 300
+    expect(panel.scrollTop).toBe(300);
+    host.remove();
+  });
+
+  it('leaves a target taller than the visible panel alone while part of it shows (no fight with scrolling)', () => {
+    const { host, panel, button } = setup(300);
+    button.getBoundingClientRect = () => rect(300, 900); // 300..1200 in a panel visible from 100 to 600
+    panel.scrollTop = 40;
+    expect(revealInScroller(button, 600)).toBe(false);
+    expect(panel.scrollTop).toBe(40);
+    host.remove();
+  });
+
   it('leaves a target that is already in view alone, and allows for the zoom', () => {
     const inView = setup(300);
     inView.panel.scrollTop = 50;
@@ -1026,7 +1046,7 @@ describe('revealInScroller', () => {
     inView.host.remove();
     const zoomed = setup(1400, 2); // drawn at 2x: a 1000 px offset on screen is 500 px of scrolling
     zoomed.panel.scrollTop = 0;
-    revealInScroller(zoomed.button);
+    revealInScroller(zoomed.button, 2000); // a tall screen: the whole panel is visible
     expect(zoomed.panel.scrollTop).toBe((1400 - 100 - (1200 - 120) / 2) / 2);
     zoomed.host.remove();
   });
