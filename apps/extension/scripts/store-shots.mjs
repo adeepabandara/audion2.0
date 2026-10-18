@@ -1,7 +1,7 @@
 // Takes the five screenshots shown on the demo's simulated extension page, from the real running demo.
-// Usage: pnpm --filter @audion/extension build:web, start the API with WEB_DIR=../extension/dist-web (see DEPLOY.md),
+// Usage: pnpm --filter @audion/demo build, start the API with WEB_DIR=../demo/dist (see DEPLOY.md),
 // then: node apps/extension/scripts/store-shots.mjs [http://localhost:8099]
-// Writes apps/extension/web/public/store/shot-1..5.png (1280x800). Uses the Chromium Playwright already has. No camera.
+// Writes apps/demo/public/store/shot-1..5.png (1280x800). Uses the Chromium Playwright already has. No camera.
 import { createRequire } from 'node:module';
 import { mkdirSync } from 'node:fs';
 import { dirname, join } from 'node:path';
@@ -11,7 +11,7 @@ const here = dirname(fileURLToPath(import.meta.url));
 const root = join(here, '../../..');
 const { chromium } = createRequire(join(root, 'e2e/package.json'))('@playwright/test');
 const base = process.argv[2] ?? 'http://localhost:8099';
-const out = join(here, '../web/public/store');
+const out = join(here, '../../demo/public/store');
 mkdirSync(out, { recursive: true });
 
 const browser = await chromium.launch();

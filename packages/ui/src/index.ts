@@ -13,6 +13,7 @@ export {
   type LanguageMenuProps,
   type LanguageOption,
 } from './components/LanguageMenu';
+export { Modal, type ModalProps } from './components/Modal';
 export { Popover, PopoverActions, type PopoverProps } from './components/Popover';
 export { Segmented, type SegmentedOption, type SegmentedProps } from './components/Segmented';
 export { Slider, type SliderProps } from './components/Slider';

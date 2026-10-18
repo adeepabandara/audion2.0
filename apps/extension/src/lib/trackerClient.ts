@@ -1,3 +1,4 @@
+import type { DeviceAnswer } from './classifier';
 import type { LandmarkFrame } from './landmarks';
 import { isFromTracker, TRACKER_SOURCE, type FromTracker, type ToTracker } from './trackerProtocol';
 
@@ -12,7 +13,7 @@ export interface HandTracker {
     startT: number,
     endT: number,
     aspect: number,
-  ): Promise<{ sign: string; confidence: number; threshold: number } | null>;
+  ): Promise<DeviceAnswer | null>;
   stop(): void;
 }
 
@@ -83,7 +84,7 @@ export class IframeTracker implements HandTracker {
     } else if (msg.type === 'landmarks' && this.inFlight?.id === msg.id) {
       const { resolve } = this.inFlight;
       this.inFlight = null;
-      resolve({ t: msg.t, hands: msg.hands });
+      resolve({ t: msg.t, hands: msg.hands, pose: msg.pose ?? null });
     }
   }
 

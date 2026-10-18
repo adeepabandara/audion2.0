@@ -1,6 +1,9 @@
 """Train the on-device sign classifier on extracted hand points, test it on signers it has not seen, export it.
 
   python train.py --data landmarks --out model_out
+  python train.py --data landmarks_v2 --out model_out_pose --pose   # + where the hands are on the body (12 numbers)
+--data is searched recursively for <SIGN>/<split>/*.npz. With --pose every clip must come from extract_pose.py (or
+synthesize_phrases.py run on such clips), and model.json gets "pose": true and 144 features.
 Writes model_out/{model.json, golden.json, report.txt}. model.json holds the weights for the hand-written JavaScript
 inference (a 1-layer GRU + a linear layer); golden.json holds raw inputs with the expected outputs for the parity test.
 """
@@ -11,18 +14,24 @@ import numpy as np
 import torch
 import torch.nn as nn
 
-from features import FEATURES, STEPS, featurize, mirror
+from features import FEATURES, POSE_FEATURES, STEPS, featurize, featurize_pose, mirror
 
-SIGNS = ["hello", "bye", "yes", "no", "please", "thankyou", "wait", "why", "who", "where", "now", "later",
-         "tomorrow", "time", "finish", "think", "look", "listen", "talk", "fine", "same", "not"]
-HIDDEN = 128
+SIGNS = [
+    "hello", "bye", "yes", "no", "please", "thankyou", "wait", "why", "who", "where", "now", "later",
+    "tomorrow", "time", "finish", "think", "look", "listen", "talk", "fine", "same", "not",
+    "please_wait", "thankyou_bye", "yes_please", "no_thankyou", "talk_later", "not_now",
+    "why_not", "think_same", "fine_thankyou", "talk_tomorrow", "think_not", "finish_now",
+    "tomorrow_time", "time_now", "who_where", "look_listen", "wait_later", "hello_fine",
+]
+HIDDEN = 256
+POSE = False  # set by --pose
 
 
 class Net(nn.Module):
-    def __init__(self):
+    def __init__(self, hidden=HIDDEN):
         super().__init__()
-        self.gru = nn.GRU(FEATURES, HIDDEN, batch_first=True)
-        self.out = nn.Linear(HIDDEN, len(SIGNS))
+        self.gru = nn.GRU(FEATURES + (POSE_FEATURES if POSE else 0), hidden, batch_first=True)
+        self.out = nn.Linear(hidden, len(SIGNS))
 
     def forward(self, x):
         _, h = self.gru(x)  # h: (1, B, H), the state after the last frame
@@ -30,42 +39,60 @@ class Net(nn.Module):
 
 
 def load(data):
-    """-> {split: [(sign_index, pts, seen, w, h, name)]}"""
+    """-> {split: [(sign_index, pts, seen, w, h, name, pose, pose_seen)]} (pose None without --pose)"""
     sets = {"train": [], "val": [], "test": []}
-    for f in sorted(Path(data).glob("*/*/*.npz")):
+    for f in sorted(Path(data).glob("**/*.npz")):
         sign, split = f.parts[-3].lower(), f.parts[-2]
         if sign not in SIGNS or split not in sets:
             continue
         d = np.load(f)
-        sets[split].append((SIGNS.index(sign), d["pts"].astype(np.float32), d["seen"], int(d["w"]), int(d["h"]), f.stem))
+        if POSE and "pose" not in d.files:
+            raise SystemExit(f"--pose needs body points, missing in {f}")
+        pose = (d["pose"].astype(np.float32), d["pose_seen"]) if POSE else (None, None)
+        sets[split].append((SIGNS.index(sign), d["pts"].astype(np.float32), d["seen"], int(d["w"]), int(d["h"]), f.stem, *pose))
     return sets
 
 
-def augment(pts, seen, w, h, rng):
-    if rng.random() < 0.5:
+def augment(pts, seen, w, h, rng, pose=None, pose_seen=None):
+    flip = rng.random() < 0.5
+    if flip:
         pts, seen = mirror(pts, seen)
     p = pts.copy()
+    q = None if pose is None else pose.copy()
+    if q is not None and flip:
+        q[..., 0] = 1.0 - q[..., 0]
     # small random rotation, scale and shift of the whole sign, and per-point jitter
     a = np.radians(rng.uniform(-12, 12))
     c, s = np.cos(a), np.sin(a)
-    xy = p[..., :2] - 0.5
-    xy = np.stack([xy[..., 0] * c - xy[..., 1] * s, xy[..., 0] * s + xy[..., 1] * c], -1) * rng.uniform(0.9, 1.1) + 0.5
-    p[..., :2] = xy + rng.uniform(-0.03, 0.03, 2)
+    scale, shift = rng.uniform(0.9, 1.1), rng.uniform(-0.03, 0.03, 2)
+
+    def tf(xy):  # the same rotation, scale and shift for the hands and the body
+        xy = xy - 0.5
+        return np.stack([xy[..., 0] * c - xy[..., 1] * s, xy[..., 0] * s + xy[..., 1] * c], -1) * scale + 0.5 + shift
+
+    p[..., :2] = tf(p[..., :2])
+    if q is not None:
+        q[..., :2] = tf(q[..., :2])
     p += rng.normal(0, 0.002, p.shape).astype(np.float32)
     # keep a random 85-100 % of the time span (a sign that starts or ends a little early or late)
     n = len(p)
     keep = max(4, int(n * rng.uniform(0.85, 1.0)))
     start = rng.integers(0, n - keep + 1)
-    return p[start:start + keep], seen[start:start + keep], w, h
+    cut = slice(start, start + keep)
+    return p[cut], seen[cut], w, h, (None if q is None else q[cut]), (None if q is None else pose_seen[cut])
+
+
+def features_of(pts, seen, w, h, pose=None, pose_seen=None):
+    return featurize_pose(pts, seen, pose, pose_seen, w, h) if POSE else featurize(pts, seen, w, h)
 
 
 def tensors(items, augment_fn=None, rng=None, repeat=1):
     X, y = [], []
     for _ in range(repeat):
-        for sign, pts, seen, w, h, _ in items:
+        for sign, pts, seen, w, h, _, pose, pose_seen in items:
             if augment_fn:
-                pts, seen, w, h = augment_fn(pts, seen, w, h, rng)
-            f = featurize(pts, seen, w, h)
+                pts, seen, w, h, pose, pose_seen = augment_fn(pts, seen, w, h, rng, pose, pose_seen)
+            f = features_of(pts, seen, w, h, pose, pose_seen)
             if f is not None:
                 X.append(f)
                 y.append(sign)
@@ -86,7 +113,10 @@ def main():
     ap.add_argument("--out", required=True)
     ap.add_argument("--epochs", type=int, default=60)
     ap.add_argument("--seed", type=int, default=0)
+    ap.add_argument("--pose", action="store_true", help="add the 12 body-position numbers per frame")
     a = ap.parse_args()
+    global POSE
+    POSE = a.pose
     random.seed(a.seed); np.random.seed(a.seed); torch.manual_seed(a.seed)
     rng = np.random.default_rng(a.seed)
     sets = load(a.data)
@@ -145,7 +175,8 @@ def main():
 
     sd = {k: v.numpy().astype(np.float32) for k, v in model.state_dict().items()}
     (out / "model.json").write_text(json.dumps({
-        "signs": SIGNS, "steps": STEPS, "features": FEATURES, "hidden": HIDDEN, "threshold": chosen,
+        "signs": SIGNS, "steps": STEPS, "features": FEATURES + (POSE_FEATURES if POSE else 0), "hidden": HIDDEN,
+        "threshold": chosen, "pose": POSE,
         # GRU layout is PyTorch's: gates stacked as reset, update, new.
         "wIh": sd["gru.weight_ih_l0"].round(5).tolist(), "wHh": sd["gru.weight_hh_l0"].round(5).tolist(),
         "bIh": sd["gru.bias_ih_l0"].round(5).tolist(), "bHh": sd["gru.bias_hh_l0"].round(5).tolist(),
@@ -154,13 +185,16 @@ def main():
     # Parity test data: raw inputs of 4 test clips and the logits the PyTorch model gives for them.
     gold = []
     model.eval()
-    for sign, pts, seen, w, h, name in sets["test"][:: max(1, len(sets["test"]) // 4)][:4]:
-        f = featurize(pts, seen, w, h)
+    for sign, pts, seen, w, h, name, pose, pose_seen in sets["test"][:: max(1, len(sets["test"]) // 4)][:4]:
+        f = features_of(pts, seen, w, h, pose, pose_seen)
         if f is None:
             continue
         with torch.no_grad():
             logits = model(torch.tensor(f)[None])[0].tolist()
-        gold.append({"w": w, "h": h, "pts": pts.round(5).tolist(), "seen": seen.tolist(), "logits": logits, "features": f.round(5).tolist()})
+        g = {"w": w, "h": h, "pts": pts.round(5).tolist(), "seen": seen.tolist(), "logits": logits, "features": f.round(5).tolist()}
+        if POSE:
+            g.update(pose=pose.round(5).tolist(), pose_seen=pose_seen.tolist())
+        gold.append(g)
     (out / "golden.json").write_text(json.dumps(gold, separators=(",", ":")))
     print("exported", [p.name for p in out.iterdir()])
 

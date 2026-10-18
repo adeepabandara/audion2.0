@@ -48,7 +48,7 @@ const envSchema = z.object({
   MOCK_LOW_CONFIDENCE_RATE: z.coerce.number().min(0).max(1).default(0.25),
   JWT_SECRET: z.string().min(16).default('dev-only-secret-change-me'),
   ALLOWED_ORIGINS: z.string().default(''),
-  /** Folder with the built public web demo (apps/extension/dist-web). Unset = API only. */
+  /** Folder with the built public web demo (apps/demo/dist). Unset = API only. */
   WEB_DIR: z.string().optional(),
   RATE_LIMIT_PER_IP_PER_MIN: z.coerce.number().int().positive().default(120),
   RATE_LIMIT_PER_INSTALL_PER_MIN: z.coerce.number().int().positive().default(60),

@@ -4,7 +4,7 @@ import {
   TRACKER_SOURCE,
   type FromTracker,
 } from '../lib/trackerProtocol';
-import { classify, toGrid, type ClassifierModel } from '../lib/classifier';
+import { classify, poseGrid, toGrid, type ClassifierModel } from '../lib/classifier';
 import { createEngine } from './engine';
 
 // The tracker page is only ever framed by Meet (or the local fake Meet page in dev builds).
@@ -18,7 +18,7 @@ const base = new URL('./', location.href).href;
 
 let engine: Awaited<ReturnType<typeof createEngine>> | null = null;
 let starting: Promise<void> | null = null;
-/** The on-device sign model (a ~2 MB file next to this page). Without it the cloud recognises every sign. */
+/** The on-device sign model (a ~7 MB file next to this page). Without it the cloud recognises every sign. */
 let signModel: ClassifierModel | null = null;
 const signModelLoading: Promise<void> = fetch(`${base}models/signclf.json`)
   .then((r) => (r.ok ? (r.json() as Promise<ClassifierModel>) : null))
@@ -47,13 +47,8 @@ window.addEventListener('message', (e) => {
   } else if (msg.type === 'frame') {
     const { bitmap, id, t } = msg;
     try {
-      reply({
-        source: TRACKER_SOURCE,
-        type: 'landmarks',
-        id,
-        t,
-        hands: engine ? engine.detect(bitmap, t) : [],
-      });
+      const found = engine ? engine.detect(bitmap, t) : { hands: [], pose: null };
+      reply({ source: TRACKER_SOURCE, type: 'landmarks', id, t, ...found });
     } catch (err) {
       reply({ source: TRACKER_SOURCE, type: 'landmarks', id, t, hands: [] });
       console.warn('tracker: detect failed', err);
@@ -65,7 +60,12 @@ window.addEventListener('message', (e) => {
       let result = null;
       try {
         const r = signModel
-          ? classify(signModel, toGrid(msg.frames, msg.startT, msg.endT), msg.aspect)
+          ? classify(
+              signModel,
+              toGrid(msg.frames, msg.startT, msg.endT),
+              msg.aspect,
+              poseGrid(msg.frames, msg.startT, msg.endT),
+            )
           : null;
         result = r && { ...r, threshold: signModel!.threshold };
       } catch (err) {

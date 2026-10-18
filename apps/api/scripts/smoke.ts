@@ -31,10 +31,11 @@ await check('page', async () => {
   need(r.ok && html.includes('Ola'), `status ${r.status}, no Ola page (is WEB_DIR set?)`);
   return '';
 });
-await check('tracker, hand model and wasm', async () => {
+await check('tracker, hand and pose models and wasm', async () => {
   for (const p of [
     'tracker.html',
     'models/hand_landmarker.task',
+    'models/pose_landmarker_lite.task',
     'wasm/vision_wasm_internal.wasm',
   ]) {
     const r = await fetch(`${base}/${p}`, { method: 'HEAD' });

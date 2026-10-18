@@ -825,6 +825,31 @@ describe('AudionSession: compose and speak', () => {
       expect(events[3]).toMatchObject({ kind: 'voice', voiceId: 'aria' });
     });
 
+    it('passes on what the model saw (runner-up guesses, frames, hands) so the log can show it', async () => {
+      const top = [
+        { sign: 'yes', confidence: 0.9 },
+        { sign: 'no', confidence: 0.06 },
+        { sign: 'hello', confidence: 0.02 },
+      ];
+      const h = harness({
+        classify: () => ({
+          sign: 'yes',
+          confidence: 0.9,
+          threshold: 0.8,
+          top,
+          frames: 17,
+          hands: 2,
+        }),
+        recognize: cloud('yes'),
+      });
+      const events: TraceEvent[] = [];
+      h.session.onTrace((e) => events.push(e));
+      await h.session.turnOn();
+      await h.feed(ONE_SIGN);
+      await flush();
+      expect(events[0]).toMatchObject({ kind: 'device', sign: 'yes', top, frames: 17, hands: 2 });
+    });
+
     it('says the device was unsure and the cloud answered', async () => {
       const h = harness({
         classify: () => ({ sign: 'yes', confidence: 0.4, threshold: 0.8 }),

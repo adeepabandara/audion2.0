@@ -11,7 +11,7 @@ const FUNCTION_WORDS = new Set(
     "doesn't didn't can't won't isn't aren't what's who's where's " +
     'do does did will would can could should shall may might must have has had ' +
     'not no yes ok okay ' +
-    'please thanks'
+    'please thanks right'
   ).split(' '),
 );
 
@@ -31,7 +31,7 @@ const GLOSS_FORMS: Record<string, string[]> = {
   same: ['same'],
   not: ['not', "don't", "doesn't", "didn't", "can't", "won't", "isn't", "aren't"],
   time: ['time', 'when'],
-  now: ['now', 'currently'],
+  now: ['now', 'currently', 'right'],
   later: ['later'],
   look: ['look', 'see', 'watch'],
   listen: ['listen', 'hear'],
@@ -41,6 +41,24 @@ const GLOSS_FORMS: Record<string, string[]> = {
   who: ['who'],
   where: ['where'],
   wait: ['wait', 'waiting'],
+  please_wait: ['please', 'wait', 'waiting'],
+  thankyou_bye: ['thank', 'thanks', 'you', 'goodbye', 'bye'],
+  yes_please: ['yes', 'please'],
+  no_thankyou: ['no', 'thank', 'thanks', 'you'],
+  talk_later: ['talk', 'speak', 'later'],
+  not_now: ['not', 'now', 'right'],
+  why_not: ['why', 'not'],
+  think_same: ['think', 'thought', 'agree', 'same'],
+  fine_thankyou: ['fine', 'good', 'well', 'thank', 'thanks', 'you'],
+  talk_tomorrow: ["let's", 'talk', 'speak', 'tomorrow'],
+  think_not: ['think', 'thought', 'not', "don't"],
+  finish_now: ['finish', 'finished', 'done', 'now', 'all'],
+  tomorrow_time: ['tomorrow', 'time', 'when', 'what'],
+  time_now: ['time', 'when', 'now', 'what', 'it'],
+  who_where: ['who', 'where'],
+  look_listen: ['look', 'see', 'watch', 'listen', 'hear'],
+  wait_later: ['wait', 'waiting', 'please', 'later', 'until'],
+  hello_fine: ['hello', 'hi', 'fine', 'good', 'well'],
 };
 
 function stem(word: string): string {
@@ -64,11 +82,14 @@ export function unexpectedWords(sentence: string, glosses: string[], context?: s
   const allowed = new Set<string>();
   const stems: string[] = [];
   for (const g of glosses.map((x) => x.toLowerCase())) {
-    allowed.add(g);
-    stems.push(stem(g));
-    for (const f of GLOSS_FORMS[g] ?? []) {
-      allowed.add(f);
-      stems.push(stem(f));
+    const parts = g.includes('_') ? [g, ...g.split('_')] : [g];
+    for (const part of parts) {
+      allowed.add(part);
+      stems.push(stem(part));
+      for (const f of GLOSS_FORMS[part] ?? []) {
+        allowed.add(f);
+        stems.push(stem(f));
+      }
     }
   }
   if (context) for (const q of CONTEXT_QUESTION_WORDS) allowed.add(q);

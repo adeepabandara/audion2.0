@@ -5,4 +5,5 @@ export * from './settings.js';
 export * from './signs.js';
 export * from './voices.js';
 export * from './voiceProfile.js';
+export * from './shareTemplates.js';
 export * from './composeGuard.js';

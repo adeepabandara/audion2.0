@@ -36,7 +36,27 @@ export interface SignInfo {
 }
 
 /** Display names where the label should differ from the vocabulary key. */
-export const SIGN_LABEL: Partial<Record<Sign, string>> = { thankyou: 'thank you' };
+export const SIGN_LABEL: Partial<Record<Sign, string>> = {
+  thankyou: 'thank you',
+  please_wait: 'please wait',
+  thankyou_bye: 'thank you, goodbye',
+  yes_please: 'yes, please',
+  no_thankyou: 'no, thank you',
+  talk_later: 'talk to you later',
+  not_now: 'not right now',
+  why_not: 'why not',
+  think_same: 'I agree',
+  fine_thankyou: "I'm fine, thank you",
+  talk_tomorrow: "let's talk tomorrow",
+  think_not: "I don't think so",
+  finish_now: 'all done now',
+  tomorrow_time: 'what time tomorrow',
+  time_now: 'what time is it now',
+  who_where: 'who and where',
+  look_listen: 'look and listen',
+  wait_later: 'please wait until later',
+  hello_fine: "hello, I'm fine",
+};
 
 export const SIGN_INFO: Record<Sign, SignInfo> = {
   hello: {
@@ -97,6 +117,96 @@ export const SIGN_INFO: Record<Sign, SignInfo> = {
   fine: { shape: SHAPES.open, place: 'chest', hint: 'Open hand, thumb taps your chest.' },
   same: { shape: SHAPES.why, place: 'space', hint: 'Both Y hands, bring them together and tap.' },
   not: { shape: SHAPES.fistThumb, place: 'chin', hint: 'Thumb under your chin, flick it forward.' },
+  please_wait: {
+    shape: SHAPES.flat,
+    place: 'chest',
+    hint: 'Flat hand circles chest, then open hands wiggle in space.',
+  },
+  thankyou_bye: {
+    shape: SHAPES.flat,
+    place: 'chin',
+    hint: 'Hand moves forward from chin, then open hand waves goodbye.',
+  },
+  yes_please: {
+    shape: SHAPES.fist,
+    place: 'chest',
+    hint: 'Fist nods up and down, then flat hand circles your chest.',
+  },
+  no_thankyou: {
+    shape: SHAPES.two,
+    place: 'chin',
+    hint: 'Fingers snap to thumb, then hand moves forward from chin.',
+  },
+  talk_later: {
+    shape: SHAPES.one,
+    place: 'space',
+    hint: 'Index finger moves from chin, then L hand tilts forward.',
+  },
+  not_now: {
+    shape: SHAPES.fistThumb,
+    place: 'chin',
+    hint: 'Thumb flicks under chin, then bent hands drop down.',
+  },
+  why_not: {
+    shape: SHAPES.why,
+    place: 'forehead',
+    hint: 'Touch forehead in Y shape, then thumb flicks forward from chin.',
+  },
+  think_same: {
+    shape: SHAPES.one,
+    place: 'forehead',
+    hint: 'Index touches forehead, then both Y hands tap together.',
+  },
+  fine_thankyou: {
+    shape: SHAPES.open,
+    place: 'chest',
+    hint: 'Thumb taps chest, then fingertips move forward from chin.',
+  },
+  talk_tomorrow: {
+    shape: SHAPES.one,
+    place: 'cheek',
+    hint: 'Index at mouth moves out, then thumb arcs forward from cheek.',
+  },
+  think_not: {
+    shape: SHAPES.one,
+    place: 'forehead',
+    hint: 'Index touches forehead, then thumb flicks out from chin.',
+  },
+  finish_now: {
+    shape: SHAPES.open,
+    place: 'space',
+    hint: 'Hands flip palms out, then both bent hands drop down.',
+  },
+  tomorrow_time: {
+    shape: SHAPES.fistThumb,
+    place: 'wrist',
+    hint: 'Thumb arcs from cheek, then index taps wrist.',
+  },
+  time_now: {
+    shape: SHAPES.one,
+    place: 'wrist',
+    hint: 'Index taps wrist, then both bent hands drop down together.',
+  },
+  who_where: {
+    shape: SHAPES.one,
+    place: 'chin',
+    hint: 'Index circles lips, then index shakes side to side.',
+  },
+  look_listen: {
+    shape: SHAPES.vee,
+    place: 'ear',
+    hint: 'V fingers point from eyes outward, then cupped hand cups the ear.',
+  },
+  wait_later: {
+    shape: SHAPES.open,
+    place: 'space',
+    hint: 'Both open hands wiggle, then L hand tilts forward.',
+  },
+  hello_fine: {
+    shape: SHAPES.flat,
+    place: 'chest',
+    hint: 'Flat hand salutes forehead, then thumb taps chest.',
+  },
 };
 
 export const SIGN_LIST = SIGNS.map((s) => ({

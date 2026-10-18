@@ -12,14 +12,15 @@ import {
 } from './index.js';
 
 describe('signs', () => {
-  it('has the 22 unique vocabulary words', () => {
-    expect(SIGNS).toHaveLength(22);
-    expect(new Set(SIGNS).size).toBe(22);
+  it('has the 40 unique vocabulary words', () => {
+    expect(SIGNS).toHaveLength(40);
+    expect(new Set(SIGNS).size).toBe(40);
   });
 
   it('normalises model output', () => {
     expect(normaliseSign(' Tomorrow. ')).toBe('tomorrow');
     expect(normaliseSign('Thank you')).toBe('thankyou');
+    expect(normaliseSign('Please_Wait')).toBe('please_wait');
     expect(normaliseSign('banana')).toBe('unknown');
     expect(normaliseSign('')).toBe('unknown');
   });

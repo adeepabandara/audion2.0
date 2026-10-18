@@ -28,6 +28,17 @@ export function peaksOf(data: Float32Array, count = 56): number[] {
   return out.map((v) => v / top);
 }
 
+/** The length and the shape of a sound, without playing it (for drawing a voice note before it is played). */
+export async function analyseAudio(
+  bytes: Uint8Array,
+): Promise<{ duration: number; peaks: number[] }> {
+  ctx ??= new AudioContext();
+  const buffer = await ctx.decodeAudioData(
+    bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer,
+  );
+  return { duration: buffer.duration, peaks: peaksOf(buffer.getChannelData(0)) };
+}
+
 /** Decode (format sniffed, so WAV from mock mode and MP3 from live both work) and play through the speakers. */
 export async function playAudio(bytes: Uint8Array): Promise<Playback> {
   ctx ??= new AudioContext();
