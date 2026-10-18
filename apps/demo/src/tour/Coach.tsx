@@ -97,18 +97,26 @@ function scroller(el: HTMLElement): HTMLElement | null {
 }
 
 /**
- * If the target is scrolled out of sight inside a panel (the Settings drawer can open scrolled down, leaving "Set up
- * my voice" above the fold), scroll only that panel so the target sits in its middle. The page itself never scrolls.
+ * If the target is out of sight inside a scrolling panel (Settings: on a short screen "Set up my voice" sits below the
+ * bottom of the screen, and the page cannot scroll during the tour), scroll only that panel so the target sits in the
+ * middle of the part of the panel that is ON SCREEN. Returns true when it scrolled.
  */
-export function revealInScroller(el: HTMLElement): void {
+export function revealInScroller(el: HTMLElement, viewHeight = innerHeight): boolean {
   const box = scroller(el);
-  if (!box) return;
+  if (!box) return false;
   const r = el.getBoundingClientRect();
   const b = box.getBoundingClientRect();
-  if (r.top >= b.top && r.bottom <= b.bottom) return;
+  // The part of the panel you can actually see: the panel clipped by the screen.
+  const top = Math.max(b.top, 0);
+  const bottom = Math.min(b.bottom, viewHeight);
+  if (bottom <= top || (r.top >= top && r.bottom <= bottom)) return false;
+  // Taller than what can be seen (the voice questions): fine as long as part of it shows; the visitor scrolls it.
+  if (r.height >= bottom - top && r.top < bottom && r.bottom > top) return false;
   // Rects are drawn at the window's zoom; scrollTop is not.
   const scale = box.clientHeight ? b.height / box.clientHeight || 1 : 1;
-  box.scrollTop += (r.top - b.top - (b.height - r.height) / 2) / scale;
+  const before = box.scrollTop;
+  box.scrollTop += (r.top - top - (bottom - top - r.height) / 2) / scale;
+  return box.scrollTop !== before;
 }
 
 /**
@@ -183,7 +191,15 @@ export function Coach({ step, index, total, find, done, stuck, onNext, onSkip }:
   // Follow the target every frame: the widget moves, opens and animates, and the window zooms.
   useEffect(() => {
     let raf = 0;
+    let lastReveal = 0;
     const tick = () => {
+      // A step's control must stay reachable: if a zoom or a redraw leaves it outside the visible part of its panel,
+      // bring it back (at most twice a second, so it never fights the visitor's own scrolling for long).
+      const now = performance.now();
+      if (step.waitFor && step.target && now - lastReveal > 500) {
+        const el = find(step.target);
+        if (el && revealInScroller(el)) lastReveal = now;
+      }
       const el = step.target ? find(step.target) : null;
       // The target appeared, or the step now points at its next control: zoom onto it once, when it has settled. The
       // widget redrawing the same control does not count, or the view would keep moving.

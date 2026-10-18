@@ -175,7 +175,8 @@ export const COACH_STEPS: CoachStep[] = [
     placement: 'left',
     target: '.au-drawer section[aria-label="My voice"] button',
     scene: 'call',
-    zoom: 1.5,
+    // No zoom: the Settings drawer is tall, and a zoom could leave the button below the bottom of a short screen.
+    zoom: 1,
     waitFor: 'voice-setup',
     demo: 'click',
   },
