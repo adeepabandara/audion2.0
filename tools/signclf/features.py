@@ -62,3 +62,48 @@ def mirror(pts, seen):
     p[lone, 0], m[lone, 0] = p[lone, 1], True
     p[lone, 1], m[lone, 1] = 0, False
     return p, m
+
+
+# Optional body (pose) features: WHERE on the body each hand is. Clips from extract_pose.py carry MediaPipe Pose
+# points: pose (T, 33, 4) = x, y, z, visibility, and pose_seen (T,). 12 more numbers per frame, appended after the
+# 132: per hand slot, the wrist and the index fingertip measured from the nose, and the wrist from the middle of the
+# shoulders, all in shoulder widths (zeros when that hand or the shoulders are not seen). A browser that uses a
+# pose model must compute exactly these numbers too.
+POSE_FEATURES = 12
+NOSE, L_SHOULDER, R_SHOULDER, INDEX_TIP = 0, 11, 12, 8
+
+
+def anchors(pose, pose_seen, aspect):
+    """Per-clip nose, shoulder centre and shoulder width (medians over frames where both shoulders are visible)."""
+    ok = pose_seen & (pose[:, L_SHOULDER, 3] > 0.5) & (pose[:, R_SHOULDER, 3] > 0.5)
+    if not ok.any():
+        return None
+    p = pose[ok].astype(np.float32).copy()
+    p[..., 0] *= aspect
+    nose = np.median(p[:, NOSE, :2], axis=0)
+    sc = np.median((p[:, L_SHOULDER, :2] + p[:, R_SHOULDER, :2]) / 2, axis=0)
+    width = float(np.median(np.linalg.norm(p[:, L_SHOULDER, :2] - p[:, R_SHOULDER, :2], axis=-1)))
+    return nose, sc, max(width, 0.05)
+
+
+def featurize_pose(pts, seen, pose, pose_seen, w, h, steps=STEPS):
+    """Returns (steps, 132 + 12) float32, or None when fewer than 4 frames have a hand."""
+    base = featurize(pts, seen, w, h, steps)
+    if base is None:
+        return None
+    a, b = span(seen)
+    p = pts[a:b].astype(np.float32).copy()
+    s = seen[a:b]
+    aspect = w / h
+    p[..., 0] *= aspect
+    anc = anchors(pose[a:b], pose_seen[a:b], aspect) if pose is not None else None
+    extra = np.zeros((steps, 2, 6), np.float32)
+    if anc is not None:
+        nose, sc, width = anc
+        sel = np.minimum((np.arange(steps) * len(p) / steps).astype(int), len(p) - 1)
+        for hnd in range(2):
+            m = s[sel, hnd]
+            wr = p[sel][m, hnd, WRIST, :2]
+            tip = p[sel][m, hnd, INDEX_TIP, :2]
+            extra[m, hnd] = np.concatenate([(wr - nose) / width, (tip - nose) / width, (wr - sc) / width], axis=-1)
+    return np.concatenate([base, extra.reshape(steps, POSE_FEATURES)], axis=1)
