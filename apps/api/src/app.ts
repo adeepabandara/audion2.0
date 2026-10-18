@@ -41,6 +41,19 @@ declare module 'fastify' {
 
 const fallbackComposer = new MockComposer();
 
+/**
+ * How long a browser may keep a file of the web demo. The page and the model weights are checked on every visit (a
+ * cheap "has it changed?" answer, so a new build shows at once); build output with a hash in its name never changes;
+ * the big, rarely changing files (WebAssembly, the hand model, videos) are kept for a day; the rest for five minutes.
+ */
+export function webCacheControl(filePath: string): string {
+  const path = filePath.replaceAll('\\', '/');
+  if (path.endsWith('.html') || path.endsWith('/signclf.json')) return 'no-cache';
+  if (path.includes('/assets/')) return 'public, max-age=31536000, immutable';
+  if (/\.(wasm|task|mp4)$/.test(path)) return 'public, max-age=86400';
+  return 'public, max-age=300';
+}
+
 export async function buildApp(
   config: Config,
   services: Services,
@@ -111,7 +124,12 @@ export async function buildApp(
     return reply.status(appErr.status).send(appErr.toResponse());
   });
   if (config.webDir) {
-    await app.register(fastifyStatic, { root: config.webDir, maxAge: '1h' });
+    await app.register(fastifyStatic, {
+      root: config.webDir,
+      cacheControl: false,
+      setHeaders: (reply, filePath) =>
+        void reply.header('cache-control', webCacheControl(filePath)),
+    });
   }
   app.setNotFoundHandler((_req, reply) =>
     reply.status(400).send(new AppError('BAD_REQUEST', 'Unknown endpoint.').toResponse()),

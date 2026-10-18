@@ -1,4 +1,5 @@
-import type { Hand, LandmarkFrame } from './landmarks';
+import type { DeviceAnswer } from './classifier';
+import type { BodyPoint, Hand, LandmarkFrame } from './landmarks';
 
 /** Messages between the content script and the extension-origin tracker iframe. */
 export const TRACKER_SOURCE = 'audion-tracker';
@@ -20,13 +21,20 @@ export type ToTracker =
 export type FromTracker =
   | { source: typeof TRACKER_SOURCE; type: 'ready'; delegate: 'GPU' | 'CPU' }
   | { source: typeof TRACKER_SOURCE; type: 'error'; message: string }
-  | { source: typeof TRACKER_SOURCE; type: 'landmarks'; id: number; t: number; hands: Hand[] }
+  | {
+      source: typeof TRACKER_SOURCE;
+      type: 'landmarks';
+      id: number;
+      t: number;
+      hands: Hand[];
+      pose?: BodyPoint[] | null;
+    }
   /** null when the on-device model is unavailable or had too little to go on. */
   | {
       source: typeof TRACKER_SOURCE;
       type: 'classified';
       id: number;
-      result: { sign: string; confidence: number; threshold: number } | null;
+      result: DeviceAnswer | null;
     };
 
 export function isFromTracker(data: unknown): data is FromTracker {

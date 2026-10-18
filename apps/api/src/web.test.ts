@@ -17,6 +17,16 @@ describe('public web demo', () => {
     expect(res.body).toContain('Ola test page');
   });
 
+  it('has a new build show at once: the page is rechecked, hashed files are kept, icons only briefly', async () => {
+    ({ app } = await makeApp({ WEB_DIR }));
+    const cache = async (url: string) => (await app.inject(url)).headers['cache-control'];
+    expect(await cache('/')).toBe('no-cache');
+    expect(await cache('/index.html')).toBe('no-cache');
+    expect(await cache('/signclf.json')).toBe('no-cache');
+    expect(await cache('/assets/app-abc123.js')).toBe('public, max-age=31536000, immutable');
+    expect(await cache('/icon/32.png')).toBe('public, max-age=300');
+  });
+
   it('serves no pages without WEB_DIR', async () => {
     ({ app } = await makeApp());
     expect((await app.inject('/')).statusCode).toBe(400);

@@ -33,8 +33,8 @@ describe('position', () => {
 });
 
 describe('supported signs sheet data', () => {
-  it('describes every one of the 22 signs exactly once', () => {
-    expect(SIGN_LIST).toHaveLength(22);
+  it('describes every one of the 40 signs exactly once', () => {
+    expect(SIGN_LIST).toHaveLength(40);
     expect(SIGN_LIST.map((s) => s.sign)).toEqual([...SIGNS]);
     for (const sign of SIGNS) {
       expect(SIGN_INFO[sign].hint.length, sign).toBeGreaterThan(10);

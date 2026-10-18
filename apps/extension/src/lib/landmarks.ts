@@ -10,10 +10,17 @@ export interface Hand {
   handedness: 'Left' | 'Right' | 'Unknown';
 }
 
+/** One MediaPipe Pose landmark: x/y normalised to the frame, plus how likely it is to be visible (0..1). */
+export interface BodyPoint extends Point {
+  visibility: number;
+}
+
 export interface LandmarkFrame {
   /** Milliseconds, monotonic (performance.now). */
   t: number;
   hands: Hand[];
+  /** 33 MediaPipe Pose landmarks of the one person in view (face, shoulders, arms); null or absent when not found. */
+  pose?: BodyPoint[] | null;
 }
 
 export const WRIST = 0;

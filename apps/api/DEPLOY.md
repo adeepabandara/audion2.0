@@ -162,8 +162,8 @@ choose `CONFIDENCE_THRESHOLD`, then update that variable the same way.
 
 ## 7. Public web demo (AI Builder Cup submission)
 
-The same image also serves the public web demo (`apps/extension/web/`, built with `pnpm --filter @audion/extension
-build:web`, copied into the image as `/app/web`, `WEB_DIR` already set in the Dockerfile). One Cloud Run service is the
+The same image also serves the public web demo (`apps/demo/`, built with `pnpm --filter @audion/demo
+build`, copied into the image as `/app/web`, `WEB_DIR` already set in the Dockerfile). One Cloud Run service is the
 whole site: page, hand tracker and API on one origin, so no CORS or extension ID is involved. Signs are recognised on
 the visitor's device (no recognition call, no tuned endpoint), so the service only needs Gemini for sentences,
 meeting summaries and translation, and Cloud Text-to-Speech for voices. All of this is yours to run: the commands

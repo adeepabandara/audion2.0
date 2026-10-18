@@ -150,9 +150,19 @@ const CAP_NOTICE = 'Daily limit reached. Try tomorrow.';
 type Listener = (s: MachineState) => void;
 
 /** What each step of the pipeline did and how long it took, for the web demo's "Live pipeline" log. */
+/** What the on-device model saw for one sign, for the live log (all optional: older callers and tests omit them). */
+export interface SignDetail {
+  /** The three best guesses, best first. */
+  top?: Array<{ sign: string; confidence: number }>;
+  /** Frames with a hand in the sign. */
+  frames?: number;
+  /** The most hands in view at once. */
+  hands?: number;
+}
+
 export type TraceEvent =
-  | { kind: 'device'; sign: string; confidence: number; ms: number }
-  | {
+  | ({ kind: 'device'; sign: string; confidence: number; ms: number } & SignDetail)
+  | ({
       kind: 'device-unsure';
       sign: string;
       confidence: number;
@@ -160,7 +170,7 @@ export type TraceEvent =
       ms: number;
       /** What happens next: the cloud decides, or the signer is asked to sign again. */
       then: 'cloud' | 'retry';
-    }
+    } & SignDetail)
   | { kind: 'cloud'; role: 'check' | 'answer'; sign: string; ms: number; deviceSign?: string }
   | { kind: 'sentence'; sentence: string; writer: string; ms: number }
   | { kind: 'translate'; language: string; ms: number }
@@ -708,10 +718,21 @@ export class AudionSession {
             threshold: needs,
             ms,
             then: cloudChecks ? 'cloud' : 'retry',
+            top: r.top,
+            frames: r.frames,
+            hands: r.hands,
           });
           return { chipId: null, outcome: 'unsure' };
         }
-        this.trace({ kind: 'device', sign: r.sign, confidence: r.confidence, ms });
+        this.trace({
+          kind: 'device',
+          sign: r.sign,
+          confidence: r.confidence,
+          ms,
+          top: r.top,
+          frames: r.frames,
+          hands: r.hands,
+        });
         const chipId = this.state.nextId;
         this.dispatch({
           type: 'RECOGNISED_FAST',
