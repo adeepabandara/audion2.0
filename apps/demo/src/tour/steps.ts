@@ -130,18 +130,20 @@ export const COACH_STEPS: CoachStep[] = [
     placement: 'top',
     target: '.ap-pill .au-btn',
     scene: 'call',
-    zoom: 2,
+    // The first look at Ola in the call: the whole window stays in view, so the popup is never cut off.
+    zoom: 1,
     waitFor: 'panel-open',
     demo: 'click',
   },
   {
     id: 'on',
     title: 'Turn Ola on',
-    text: 'Switch it on and allow the camera.',
+    text: 'Switch it on, then allow the camera every visit.',
     placement: 'left',
     target: '.ap-card__head .au-switch',
     scene: 'call',
-    zoom: 2,
+    // No zoom while the camera starts: the browser's permission prompt and the camera picture both stay in view.
+    zoom: 1,
     waitFor: 'ola-on',
     demo: 'click',
   },
@@ -152,7 +154,7 @@ export const COACH_STEPS: CoachStep[] = [
     placement: 'left',
     target: '.ap-card__head .au-pill',
     scene: 'call',
-    zoom: 2,
+    zoom: 1,
     waitFor: 'ready',
   },
   {

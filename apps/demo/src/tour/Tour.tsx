@@ -25,6 +25,11 @@ import './tour.css';
 type Stage = 'idle' | 'welcome' | 'coach';
 
 const KEY = 'ola:tour';
+/** Longer than this on "Starting" means the camera is waiting on, or was refused, the browser's permission. */
+export const SLOW_START_MS = 6000;
+/** What to do when the camera does not start: only "Allow while visiting the site" keeps working for Ola. */
+const ALLOW_HOW =
+  'Choose "Allow while visiting the site" for the camera. "Allow this time" doesn\u2019t work with Ola.';
 const remember = (v: string) => {
   try {
     localStorage.setItem(KEY, v);
@@ -169,6 +174,9 @@ export function Tour({ panelStore, session, shadow, force = false, disabled = fa
     let seenSetup = false;
     let sawSpeaking = false;
     let voiceHeard = false;
+    /** Set once the camera has been "Starting" for SLOW_START_MS on this step (it hangs on a permission prompt). */
+    let slow = false;
+    let slowTimer: number | undefined;
     const giveUp =
       wanted === 'spoken'
         ? window.setTimeout(() => {
@@ -180,16 +188,29 @@ export function Tour({ panelStore, session, shadow, force = false, disabled = fa
     const check = () => {
       if (session.getState().speaking) sawSpeaking = true;
       if (find('.au-drawer .vs')) seenSetup = true;
-      const blocked =
-        (wanted === 'ola-on' || wanted === 'ready') &&
-        session.getState().problems.includes('cameraBlocked');
+      const cameraStep = wanted === 'ola-on' || wanted === 'ready';
+      const st = session.getState();
+      const blocked = cameraStep && st.problems.includes('cameraBlocked');
+      if (cameraStep && st.starting && !blocked) {
+        slowTimer ??= window.setTimeout(() => {
+          slow = true;
+          check();
+        }, SLOW_START_MS);
+      } else {
+        slow = false;
+        if (slowTimer !== undefined) window.clearTimeout(slowTimer);
+        slowTimer = undefined;
+      }
       setStuck((old) =>
         blocked
-          ? (old ?? {
-              title: 'Camera blocked',
-              text: 'Allow the camera in your browser, then choose Try again in Ola.',
-            })
-          : undefined,
+          ? old?.title === 'Camera blocked'
+            ? old
+            : { title: 'Camera blocked', text: `${ALLOW_HOW} Then choose Try again in Ola.` }
+          : slow
+            ? old?.title === 'Camera not starting'
+              ? old
+              : { title: 'Camera not starting', text: ALLOW_HOW }
+            : undefined,
       );
       if (timer === undefined && met()) {
         setDone(true);
@@ -212,6 +233,7 @@ export function Tour({ panelStore, session, shadow, force = false, disabled = fa
       watch.disconnect();
       if (timer !== undefined) window.clearTimeout(timer);
       if (giveUp !== undefined) window.clearTimeout(giveUp);
+      if (slowTimer !== undefined) window.clearTimeout(slowTimer);
     };
   }, [stage, step, panelStore, session, next, find, shadow]);
 
