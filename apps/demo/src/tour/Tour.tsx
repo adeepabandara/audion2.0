@@ -56,7 +56,7 @@ export function Tour({ panelStore, session, shadow, force = false, disabled = fa
   );
   const [index, setIndex] = useState(0);
   const [done, setDone] = useState(false);
-  const [stuck, setStuck] = useState<string | undefined>();
+  const [stuck, setStuck] = useState<{ title: string; text: string } | undefined>();
   /** The "Try these signs" guide: it opens at the signing step and stays until the visitor closes it. */
   const [guideOpen, setGuideOpen] = useState(false);
   const startButton = useRef<HTMLButtonElement>(null);
@@ -183,9 +183,12 @@ export function Tour({ panelStore, session, shadow, force = false, disabled = fa
       const blocked =
         (wanted === 'ola-on' || wanted === 'ready') &&
         session.getState().problems.includes('cameraBlocked');
-      setStuck(
+      setStuck((old) =>
         blocked
-          ? 'The camera is blocked. Allow it in your browser, then choose Try again in Ola.'
+          ? (old ?? {
+              title: 'Camera blocked',
+              text: 'Allow the camera in your browser, then choose Try again in Ola.',
+            })
           : undefined,
       );
       if (timer === undefined && met()) {

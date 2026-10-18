@@ -23,6 +23,7 @@ import { bindBrowser, getBrowser, setBrowser, subscribeBrowser } from './browser
 import { ExtensionsMenu } from './browser/ExtensionsMenu';
 import { ScriptedCaptions } from './demoCaptions';
 import { createGemma, GEMMA_SIZE_GB, type GemmaStatus } from './gemmaComposer';
+import { GemmaNotice } from './GemmaNotice';
 import { LocalVoice } from './localVoice';
 import { Tour } from './tour/Tour';
 import { PipelineBus } from './pipeline/bus';
@@ -243,6 +244,12 @@ session.subscribe((state) => {
   autoStarted = true;
   if (remembered() !== 'off' && !dataSaver) void gemma.enable();
 });
+// While the 2 GB model downloads, a small card offers to stop it (and remembers that choice).
+const gemmaRoot = document.createElement('div');
+document.body.appendChild(gemmaRoot);
+createRoot(gemmaRoot).render(
+  <GemmaNotice gemma={gemma} sizeGb={GEMMA_SIZE_GB} onStop={() => remember('off')} />,
+);
 
 // "Hear the voices": one button per Google Text-to-Speech voice, through the same /v1/speak the panel uses.
 const voiceButtons = document.getElementById('voice-buttons');
@@ -568,3 +575,10 @@ if (tourRoot) {
 
 const architectureRoot = document.getElementById('architecture-root');
 if (architectureRoot) createRoot(architectureRoot).render(<ArchitectureHost />);
+// The Architecture view sits right under the top bar, whose height grows when its text wraps on a narrow screen.
+const topbar = document.querySelector<HTMLElement>('.topbar');
+if (topbar && typeof ResizeObserver !== 'undefined') {
+  new ResizeObserver(() =>
+    document.documentElement.style.setProperty('--topbar-h', `${topbar.offsetHeight}px`),
+  ).observe(topbar);
+}

@@ -618,7 +618,7 @@ export function ArchitectureView({ bus, open, onClose }: ArchitectureViewProps) 
             <p className="arch__service">{serviceLine}</p>
             <dl className="arch__stats">
               <div>
-                <dt>Hand tracking</dt>
+                <dt>Hand + body tracking</dt>
                 <dd>{stats.fps} frames/s</dd>
               </div>
               <div>
@@ -673,8 +673,8 @@ export function ArchitectureView({ bus, open, onClose }: ArchitectureViewProps) 
 
           <p className="arch__credit">
             The sign model learned from PopSign ASL (CC BY 4.0, Georgia Tech and the Deaf
-            Professional Arts Network). Hand tracking: MediaPipe. Sentences: Gemma and Gemini.
-            Voices: Google Cloud.
+            Professional Arts Network). Hand and body tracking: MediaPipe. Sentences: Gemma and
+            Gemini. Voices: Google Cloud.
           </p>
         </aside>
       </div>
