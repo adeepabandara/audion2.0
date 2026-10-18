@@ -79,6 +79,42 @@ describe('createGemma', () => {
   });
 });
 
+describe('stopping the download', () => {
+  it('turning Gemma off while it is still loading stops it for good', async () => {
+    Object.defineProperty(navigator, 'gpu', { value: {}, configurable: true });
+    let release!: () => void;
+    const gate = new Promise<void>((r) => (release = r));
+    let created = 0;
+    let deleted = 0;
+    const g = createGemma('/litert/', async () => ({
+      loadLiteRtLm: async () => {
+        await gate; // still fetching when the visitor stops it
+        return {};
+      },
+      Engine: {
+        create: async () => {
+          created++;
+          return { createConversation: async () => ({}), delete: async () => void deleted++ };
+        },
+      },
+    }));
+    const seen: string[] = [];
+    g.subscribe((s) => seen.push(s.state));
+    const loading = g.enable();
+    await Promise.resolve();
+    expect(g.status().state).toBe('loading');
+    g.disable();
+    release();
+    await loading;
+    expect(g.status().state).toBe('off');
+    expect(seen.at(-1)).toBe('off');
+    expect(seen).not.toContain('ready');
+    expect(seen).not.toContain('failed');
+    // Either it never started the model, or it threw away the one it had just made.
+    expect(created - deleted).toBe(0);
+  });
+});
+
 describe('createGemma with a meeting context', () => {
   const context = 'The team is planning the product demo for Friday at three.';
 
@@ -125,6 +161,19 @@ describe('modelSource (keeps the 2 GB model in Cache Storage)', () => {
   afterEach(() => {
     vi.unstubAllGlobals();
     stored.clear();
+  });
+
+  it('passes the stop signal to the download', async () => {
+    vi.stubGlobal('caches', fakeCaches);
+    const fetchMock = vi.fn(async (_u: string, init?: RequestInit) => {
+      expect(init?.signal?.aborted).toBe(true);
+      throw new DOMException('Aborted', 'AbortError');
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    const ctrl = new AbortController();
+    ctrl.abort();
+    await expect(modelSource('https://x/model', () => {}, ctrl.signal)).rejects.toThrow(/Abort/);
+    expect(stored.size).toBe(0);
   });
 
   it('downloads once, reports progress, and later reads from the cache without the network', async () => {

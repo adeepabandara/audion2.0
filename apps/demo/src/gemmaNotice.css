@@ -1,0 +1,49 @@
+.gemma-notice {
+  position: fixed;
+  left: 16px;
+  bottom: 64px;
+  z-index: 900;
+  display: grid;
+  gap: 8px;
+  max-width: min(340px, calc(100vw - 32px));
+  padding: 12px 14px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: var(--card);
+  color: var(--fg);
+  font:
+    500 0.85rem/1.4 Poppins,
+    system-ui,
+    sans-serif;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.35);
+}
+.gemma-notice p {
+  margin: 0;
+}
+.gemma-notice__bar {
+  display: block;
+  height: 4px;
+  border-radius: 2px;
+  background: var(--line);
+  overflow: hidden;
+}
+.gemma-notice__bar span {
+  display: block;
+  height: 100%;
+  background: var(--accent);
+}
+.gemma-notice__btn {
+  justify-self: start;
+  padding: 6px 14px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--fg);
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+.gemma-notice__btn:focus-visible {
+  outline: 3px solid var(--accent);
+  outline-offset: 3px;
+}

@@ -65,8 +65,8 @@ export interface CoachProps {
   find(selectors: string | string[]): HTMLElement | null;
   /** The step has just been done (announced to screen readers; the step then moves on by itself). */
   done: boolean;
-  /** Something is in the visitor's way (for example the camera is blocked): what to do about it. */
-  stuck?: string;
+  /** Something is in the visitor's way (for example the camera is blocked): what it is, and what to do about it. */
+  stuck?: { title: string; text: string };
   onNext(): void;
   onSkip(): void;
 }
@@ -81,6 +81,34 @@ function ringRadius(el: HTMLElement): string {
   if (r.endsWith('%')) return r;
   const px = parseFloat(r);
   return `${(Number.isFinite(px) ? px : 0) + PAD}px`;
+}
+
+/** The nearest ancestor that scrolls, crossing out of a shadow root (Ola's Settings drawer lives in one). */
+function scroller(el: HTMLElement): HTMLElement | null {
+  let n: Node | null = el.parentNode;
+  while (n) {
+    if (n instanceof HTMLElement) {
+      const oy = getComputedStyle(n).overflowY;
+      if ((oy === 'auto' || oy === 'scroll') && n.scrollHeight > n.clientHeight) return n;
+      n = n.parentNode;
+    } else n = n instanceof ShadowRoot ? n.host : null;
+  }
+  return null;
+}
+
+/**
+ * If the target is scrolled out of sight inside a panel (the Settings drawer can open scrolled down, leaving "Set up
+ * my voice" above the fold), scroll only that panel so the target sits in its middle. The page itself never scrolls.
+ */
+export function revealInScroller(el: HTMLElement): void {
+  const box = scroller(el);
+  if (!box) return;
+  const r = el.getBoundingClientRect();
+  const b = box.getBoundingClientRect();
+  if (r.top >= b.top && r.bottom <= b.bottom) return;
+  // Rects are drawn at the window's zoom; scrollTop is not.
+  const scale = box.clientHeight ? b.height / box.clientHeight || 1 : 1;
+  box.scrollTop += (r.top - b.top - (b.height - r.height) / 2) / scale;
 }
 
 /**
@@ -124,6 +152,7 @@ export function Coach({ step, index, total, find, done, stuck, onNext, onSkip }:
     if (!zoomer || !anchor) return;
     const animate = !reducedMotion();
     const el = step.target ? find(step.target) : null;
+    if (el) revealInScroller(el);
     const maximised = document.getElementById('browser')?.classList.contains('is-max');
     if (!el || step.zoom <= 1 || innerWidth < 900 || maximised) {
       applyZoom(zoomer, NO_ZOOM, animate);
@@ -348,9 +377,9 @@ export function Coach({ step, index, total, find, done, stuck, onNext, onSkip }:
             />
           ))}
         </ol>
-        <h2 id="tour-title">{step.title}</h2>
+        <h2 id="tour-title">{stuck?.title ?? step.title}</h2>
         <p id="tour-text" className={stuck ? 'tour-pop__stuck' : undefined}>
-          {stuck ?? step.text}
+          {stuck?.text ?? step.text}
         </p>
         <p className="au-sr-only" role="status">
           {done ? 'Done.' : ''}

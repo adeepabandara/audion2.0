@@ -84,6 +84,14 @@ describe('the live log says what the model saw', () => {
 });
 
 describe('architecture model', () => {
+  it('shows that signs are read from the hands AND the body (MediaPipe Pose)', () => {
+    const tracking = NODES.find((n) => n.id === 'mediapipe')!;
+    expect(tracking.title).toMatch(/body/i);
+    expect(tracking.what).toMatch(/Pose Landmarker/);
+    expect(NODES.find((n) => n.id === 'classifier')!.what).toMatch(/on the body/);
+    expect(EDGE_BY_ID['mp-seg'].label).toMatch(/body/);
+  });
+
   it('has unique steps, and every edge and route points at things that exist', () => {
     expect(new Set(NODES.map((n) => n.id)).size).toBe(NODES.length);
     expect(NODES).toHaveLength(13);

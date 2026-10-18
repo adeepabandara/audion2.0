@@ -512,7 +512,10 @@
       .topbar {
         position: relative;
         z-index: 1; /* under the window, so the tour's zoom passes over the bar */
-        height: var(--topbar-h);
+        /* Grows when its text wraps (a phone): a fixed height let the tabs slide under the window. main.tsx keeps
+           --topbar-h equal to the real height, which the Architecture view sits under. */
+        min-height: 150px;
+        box-sizing: border-box;
         display: flex;
         flex-direction: row;
         flex-wrap: wrap;
@@ -521,7 +524,7 @@
 
         gap: 8px 24px;
         /* Lines up with the left edge of the browser window below (same 1180px column, 16px gutter). */
-        padding: 14px max(16px, calc((100% - 1180px) / 2 + 16px)) 0;
+        padding: 14px max(16px, calc((100% - 1180px) / 2 + 16px)) 8px;
         /* No background or line of its own: it is part of the same page. */
         background: transparent;
         transition: background 0.4s;
@@ -684,6 +687,16 @@
         display: flex;
         gap: 8px;
         flex: none;
+      }
+      /* A phone: the title on its own line, the two buttons under it (they ran off the right edge). */
+      @media (max-width: 560px) {
+        .arch__head {
+          flex-wrap: wrap;
+          padding: 12px 16px;
+        }
+        .arch__actions {
+          flex-wrap: wrap;
+        }
       }
       .arch__btn {
         padding: 8px 16px;

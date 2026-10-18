@@ -4,7 +4,7 @@ import { memoryStore } from '@ext/lib/storage';
 import { SIGN_INFO } from '@ext/panel/signs';
 import { createPanelStore } from '@ext/panel/store';
 import { getBrowser, resetBrowser, setBrowser } from '../browser/browserState';
-import { Coach, placePopover } from './Coach';
+import { Coach, placePopover, revealInScroller } from './Coach';
 import { SIGNS } from '@audion/shared';
 import { GLIDE_MS, easeOut, glideFrame, glideSpot } from './glide';
 import { GestureList } from './Gestures';
@@ -378,7 +378,7 @@ describe('the tour', () => {
 
     act(() => setBrowser({ scene: 'call' }));
     tick(1000);
-    expect(heading('Ola opens by itself')).toBeTruthy();
+    expect(heading('Ola is in your call')).toBeTruthy();
     expect(screen.getByRole('list', { name: 'Step 4 of 11' })).toBeTruthy();
   });
 
@@ -415,7 +415,7 @@ describe('the tour', () => {
     mount();
     toTheCall();
     expect(getBrowser()).toMatchObject({ scene: 'call', installed: true, pinned: true });
-    expect(heading('Ola opens by itself')).toBeTruthy();
+    expect(heading('Ola is in your call')).toBeTruthy();
     expect(screen.getByRole('list', { name: 'Step 4 of 11' })).toBeTruthy();
   });
 
@@ -541,9 +541,12 @@ describe('the tour', () => {
     tick(1000);
     expect(heading('Turn Ola on')).toBeTruthy();
     act(() => fake.set({ problems: ['cameraBlocked'] }));
-    expect(screen.getByText(/camera is blocked/)).toBeTruthy();
+    // The title says what is wrong (not "Turn Ola on" / "Camera ready"), the line says what to do.
+    expect(heading('Camera blocked')).toBeTruthy();
+    expect(screen.getByText(/Allow the camera in your browser/)).toBeTruthy();
     act(() => fake.set({ problems: [], on: true }));
-    expect(screen.queryByText(/camera is blocked/)).toBeNull();
+    expect(screen.queryByText(/Allow the camera in your browser/)).toBeNull();
+    expect(screen.queryByRole('heading', { name: 'Camera blocked' })).toBeNull();
   });
 
   it('skips a waiting step at once when the visitor has already done it', () => {
@@ -954,5 +957,58 @@ describe('the ring between steps', () => {
 
     await wait(GLIDE_MS + 150);
     expect(container.querySelector<HTMLElement>('.tour-ring')!.style.left).toBe('894px');
+  });
+});
+
+describe('revealInScroller', () => {
+  const rect = (top: number, height: number) =>
+    ({
+      top,
+      bottom: top + height,
+      height,
+      left: 0,
+      right: 100,
+      width: 100,
+      x: 0,
+      y: top,
+    }) as DOMRect;
+
+  /** A scrolling panel inside a shadow root, 600 px tall and drawn at `zoom`, holding a 60 px button at `buttonTop`. */
+  function setup(buttonTop: number, zoom = 1) {
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    const root = host.attachShadow({ mode: 'open' });
+    const panel = document.createElement('div');
+    panel.style.overflowY = 'auto';
+    const button = document.createElement('button');
+    panel.appendChild(button);
+    root.appendChild(panel);
+    Object.defineProperty(panel, 'clientHeight', { value: 600 });
+    Object.defineProperty(panel, 'scrollHeight', { value: 1800 });
+    panel.getBoundingClientRect = () => rect(100, 600 * zoom);
+    button.getBoundingClientRect = () => rect(buttonTop, 60 * zoom);
+    return { host, panel, button };
+  }
+
+  it('scrolls only the panel so a target above the fold lands in its middle', () => {
+    const { host, panel, button } = setup(-1000);
+    panel.scrollTop = 1200;
+    revealInScroller(button);
+    // target top -1000, panel top 100, centre offset (600 - 60) / 2 = 270: 1200 + (-1000 - 100 - 270)
+    expect(panel.scrollTop).toBe(1200 - 1370);
+    host.remove();
+  });
+
+  it('leaves a target that is already in view alone, and allows for the zoom', () => {
+    const inView = setup(300);
+    inView.panel.scrollTop = 50;
+    revealInScroller(inView.button);
+    expect(inView.panel.scrollTop).toBe(50);
+    inView.host.remove();
+    const zoomed = setup(1400, 2); // drawn at 2x: a 1000 px offset on screen is 500 px of scrolling
+    zoomed.panel.scrollTop = 0;
+    revealInScroller(zoomed.button);
+    expect(zoomed.panel.scrollTop).toBe((1400 - 100 - (1200 - 120) / 2) / 2);
+    zoomed.host.remove();
   });
 });
