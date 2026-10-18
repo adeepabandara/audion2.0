@@ -37,13 +37,14 @@ const CACHE_NAME = 'ola-gemma-v1';
 export async function modelSource(
   url: string,
   onProgress: (fraction: number | null) => void,
+  signal?: AbortSignal,
 ): Promise<string | ReadableStream<Uint8Array>> {
   if (typeof caches === 'undefined') return url;
   try {
     const cache = await caches.open(CACHE_NAME);
     let hit = await cache.match(url);
     if (!hit) {
-      const res = await fetch(url);
+      const res = await fetch(url, { signal });
       if (!res.ok || !res.body) throw new Error(`Download failed (${res.status}).`);
       const total = Number(res.headers.get('content-length')) || 0;
       let got = 0;
@@ -112,6 +113,8 @@ export function createGemma(
   let status: GemmaStatus = { state: 'off' };
   let engine: Engine | undefined;
   let enabling: Promise<void> | undefined;
+  /** Stops a download that is under way (the visitor chose not to get the 2 GB model after all). */
+  let download: AbortController | undefined;
   const subs = new Set<(s: GemmaStatus) => void>();
   const set = (s: GemmaStatus) => {
     status = s;
@@ -122,17 +125,28 @@ export function createGemma(
     const unsupported = gemmaSupport();
     if (unsupported) return set({ state: 'unsupported', reason: unsupported });
     set({ state: 'loading', progress: null });
+    const ctrl = new AbortController();
+    download = ctrl;
     try {
       const lm = await runtime();
       await lm.loadLiteRtLm(wasmDir);
-      const model = await modelSource(GEMMA_MODEL_URL, (progress) =>
-        set({ state: 'loading', progress }),
+      const model = await modelSource(
+        GEMMA_MODEL_URL,
+        (progress) => !ctrl.signal.aborted && set({ state: 'loading', progress }),
+        ctrl.signal,
       );
-      engine = (await lm.Engine.create({ model })) as unknown as Engine;
+      if (ctrl.signal.aborted) return;
+      const made = (await lm.Engine.create({ model })) as unknown as Engine;
+      // Stopped while the model was starting: do not come back on by ourselves.
+      if (ctrl.signal.aborted) return void made.delete();
+      engine = made;
       set({ state: 'ready' });
     } catch (e) {
       engine = undefined;
+      if (ctrl.signal.aborted) return; // stopped on purpose: disable() already said "off"
       set({ state: 'failed', reason: (e as Error).message || 'The model could not be loaded.' });
+    } finally {
+      if (download === ctrl) download = undefined;
     }
   }
 
@@ -148,6 +162,8 @@ export function createGemma(
       return enabling;
     },
     disable() {
+      download?.abort();
+      download = undefined;
       void engine?.delete();
       engine = undefined;
       set({ state: 'off' });

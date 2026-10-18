@@ -71,12 +71,12 @@ export const NODES: PipelineNode[] = [
     id: 'mediapipe',
     icon: 'points',
     zone: 'device',
-    title: 'Hand tracking',
+    title: 'Hands + body',
     subtitle: 'MediaPipe',
     x: 396,
     y: 200,
-    what: 'Google’s open MediaPipe Hand Landmarker model, running inside your browser. It finds 21 points on each hand about 15 times a second.',
-    data: 'Takes pictures, gives back only numbers: the positions of hand points. It does not identify anyone.',
+    what: 'Two of Google’s open MediaPipe models, running inside your browser about 15 times a second: Hand Landmarker finds 21 points on each hand, and Pose Landmarker finds your face and shoulders, so the sign model knows where on your body your hands are.',
+    data: 'Takes pictures, gives back only numbers: the positions of hand and body points. It does not identify anyone.',
   },
   {
     id: 'segmenter',
@@ -97,8 +97,8 @@ export const NODES: PipelineNode[] = [
     subtitle: 'small neural net',
     x: 948,
     y: 200,
-    what: 'A small neural network (a GRU) trained on 2,200 sign clips. It names the sign from the hand points in a few milliseconds. About 84% right on people it was not trained on; it only answers when it is at least 50% sure.',
-    data: 'Hand points in, a sign word and a confidence out. No video, no internet.',
+    what: 'A small neural network (a GRU) trained on about 17,000 sign clips. It names the sign from the hand shape, the movement and where the hands are on the body, in a few milliseconds. About 90% right on people it was not trained on; it only answers when it is at least 50% sure.',
+    data: 'Hand and body points in, a sign word and a confidence out. No video, no internet.',
   },
   {
     id: 'sentence',
@@ -238,7 +238,7 @@ export interface PipelineEdge {
 
 export const EDGES: PipelineEdge[] = [
   { id: 'cam-mp', d: 'M212 200 L304 200', label: 'video', kind: 'video', lx: 258, ly: 188 },
-  { id: 'mp-seg', d: 'M488 200 L580 200', label: 'hand points', kind: 'points', lx: 534, ly: 188 },
+  { id: 'mp-seg', d: 'M488 200 L580 200', label: 'hand + body', kind: 'points', lx: 534, ly: 188 },
   { id: 'seg-clf', d: 'M764 200 L856 200', label: 'one sign', kind: 'points', lx: 810, ly: 188 },
   {
     id: 'clf-sent',
@@ -444,7 +444,7 @@ export function routeFor(e: PipelineEvent): Hop[] {
 /** The colour class of the data on an edge, from the legend. */
 export const KIND_LABEL: Record<DataKind, string> = {
   video: 'Video',
-  points: 'Hand points',
+  points: 'Hand + body points',
   signs: 'Signs',
   text: 'Text',
   audio: 'Audio',
