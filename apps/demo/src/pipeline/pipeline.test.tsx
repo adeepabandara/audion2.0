@@ -318,7 +318,7 @@ describe('ArchitectureView', () => {
     const steps = within(dialog).getAllByRole('button', { name: /on your device|on Google Cloud/ });
     expect(steps).toHaveLength(13);
     expect(steps.every((s) => s.getAttribute('tabindex') === '0')).toBe(true);
-    expect(document.body.style.overflow).toBe('hidden');
+    expect(document.body.style.overflow).toBe(''); // part of the page: it never locks the page's scrolling
   });
 
   it('closes with the Close button and with Escape, after fading out', () => {
