@@ -277,15 +277,8 @@ export function ArchitectureView({ bus, open, onClose }: ArchitectureViewProps) 
     return () => cancelAnimationFrame(raf);
   }, [open, reduced, packets]);
 
-  // It sits under the page's tabs, so focus stays where the visitor put it (on the tab); Escape goes back.
-  useEffect(() => {
-    if (!open) return;
-    const previous = document.body.style.overflow;
-    document.body.style.overflow = 'hidden';
-    return () => {
-      document.body.style.overflow = previous;
-    };
-  }, [open]);
+  // It takes the prototype's place in the page, under the page's tabs: the page scrolls as usual, focus stays where
+  // the visitor put it (on the tab), and Escape goes back.
 
   const clearTimers = useCallback(() => {
     timers.current.forEach((id) => window.clearTimeout(id));

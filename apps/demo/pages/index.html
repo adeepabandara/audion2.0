@@ -529,14 +529,6 @@
         background: transparent;
         transition: background 0.4s;
       }
-      body.arch-open .topbar {
-        z-index: 1200;
-        position: fixed;
-        top: 0;
-        left: 0;
-        right: 0;
-        background: #070a10; /* the same dark as the Architecture view under it */
-      }
       .topbar__brand {
         min-width: 0;
       }
@@ -614,9 +606,17 @@
         --arch-text-kind: #c4a1ff;
         --arch-audio: #f472b6;
         --arch-context: #a3e635;
-        position: fixed;
-        inset: var(--topbar-h) 0 0 0;
-        z-index: 1100;
+        /* Part of the same page: it takes the prototype window's place (same column, size and frame) while the
+           Architecture tab is selected, under the same top bar, and the page scrolls as usual. */
+        position: relative;
+        width: calc(100% - 32px);
+        max-width: 1148px;
+        margin: 16px auto 24px;
+        height: clamp(680px, calc(100vh - 190px), 900px);
+        overflow: hidden;
+        border: 1px solid var(--line);
+        border-radius: 14px;
+        box-shadow: 0 10px 40px rgba(0, 0, 0, 0.25);
         display: flex;
         flex-direction: column;
         background: radial-gradient(
@@ -1132,29 +1132,18 @@
           display: none;
         }
       }
-      body.arch-open {
-        overflow: hidden;
-      }
       .arch-open .arch {
         overflow: hidden;
       }
-      /* The meeting screen dissolves while the architecture fades in over it, and the reverse on close. */
-      .stage {
-        transition:
-          opacity 0.55s ease,
-          filter 0.55s ease,
-          transform 0.55s ease;
-      }
+      /* One page, two views: the prototype window is hidden while Architecture shows in its place. */
       body.arch-open .stage {
-        opacity: 0;
-        filter: blur(8px);
-        transform: scale(0.97);
+        display: none;
       }
       .arch {
         animation: arch-in 0.7s 0.12s cubic-bezier(0.2, 0.7, 0.2, 1) both;
       }
       .arch--out {
-        animation: arch-out 0.4s ease both;
+        display: none; /* back to the prototype at once, so the two never show one above the other */
       }
       .arch__diagram,
       .arch__side {
@@ -1172,13 +1161,6 @@
           filter: none;
         }
       }
-      @keyframes arch-out {
-        to {
-          opacity: 0;
-          transform: scale(1.01);
-          filter: blur(8px);
-        }
-      }
       @keyframes arch-rise {
         from {
           opacity: 0;
@@ -1190,9 +1172,7 @@
         }
       }
       @media (prefers-reduced-motion: reduce) {
-        .stage,
         .arch,
-        .arch--out,
         .arch__diagram,
         .arch__side {
           animation: none;
