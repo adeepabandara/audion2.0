@@ -1,4 +1,5 @@
 import type { Page } from '@playwright/test';
+import { SIGNS } from '../../../packages/shared/src/signs';
 import { FAKE_MEET, dispatch, expect, state, test, waitForState } from '../../helpers/ext';
 
 /** The element Ola's UI currently has focused (it lives in a Shadow root). */
@@ -76,8 +77,10 @@ test('the whole panel can be used with the keyboard alone, with visible focus', 
   await press(page, 'Enter');
   const sheet = page.getByRole('dialog', { name: 'Settings' });
   await sheet.getByRole('tab', { name: 'Voice' }).focus();
-  await press(page, 'ArrowRight', 2);
-  await expect(sheet.getByRole('tabpanel').getByRole('listitem')).toHaveCount(22);
+  await press(page, 'ArrowRight', 2); // Voice -> Signing -> Signs
+  await expect(sheet.getByRole('tab', { name: 'Signs' })).toHaveAttribute('aria-selected', 'true');
+  // Every sign and phrase in the vocabulary (packages/shared/src/signs.ts) is listed.
+  await expect(sheet.getByRole('tabpanel').getByRole('listitem')).toHaveCount(SIGNS.length);
   await press(page, 'Escape');
   await expect(sheet).toBeHidden();
 
