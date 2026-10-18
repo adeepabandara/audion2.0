@@ -1,8 +1,8 @@
 import '@audion/ui/styles.css';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import type { AudionSession } from '../../panel/session';
-import type { PanelStore } from '../../panel/store';
+import type { AudionSession } from '@ext/panel/session';
+import type { PanelStore } from '@ext/panel/store';
 import {
   FINISHED,
   FRESH,

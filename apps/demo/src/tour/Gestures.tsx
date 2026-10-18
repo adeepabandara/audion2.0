@@ -1,5 +1,5 @@
-import { BodyPlace, HandShape } from '../../panel/HandPose';
-import { SIGN_INFO, SIGN_LABEL } from '../../panel/signs';
+import { BodyPlace, HandShape } from '@ext/panel/HandPose';
+import { SIGN_INFO, SIGN_LABEL } from '@ext/panel/signs';
 import { SIGN_MOTION, type Motion } from './steps';
 
 /** A small arrow showing how the hand moves: away from you, round in a circle, down and forward, side to side, nodding, tapping or wiggling. */

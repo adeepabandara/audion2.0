@@ -1,8 +1,8 @@
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { memoryStore } from '../../lib/storage';
-import { SIGN_INFO } from '../../panel/signs';
-import { createPanelStore } from '../../panel/store';
+import { memoryStore } from '@ext/lib/storage';
+import { SIGN_INFO } from '@ext/panel/signs';
+import { createPanelStore } from '@ext/panel/store';
 import { getBrowser, resetBrowser, setBrowser } from '../browser/browserState';
 import { Coach, placePopover } from './Coach';
 import { SIGNS } from '@audion/shared';

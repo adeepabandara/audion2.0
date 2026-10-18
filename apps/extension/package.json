@@ -6,7 +6,6 @@
   "scripts": {
     "dev": "wxt",
     "build": "wxt build",
-    "build:web": "vite build -c vite.web.config.ts",
     "build:gallery": "vite build -c vite.gallery.config.ts",
     "zip": "wxt zip",
     "typecheck": "wxt prepare && tsc -p tsconfig.json --noEmit",
