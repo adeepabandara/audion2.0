@@ -2,6 +2,7 @@ import {
   API_ORIGIN,
   FAKE_MEET,
   ONE_SIGN,
+  SENTENCE_PAUSE,
   expect,
   installPeakMeter,
   peak,
@@ -38,7 +39,7 @@ test('sign -> sentence -> Ola voice in the call -> caption -> summary, with only
   expect(await peak(page)).toBeLessThan(0.01); // silent microphone: nothing is being sent yet
 
   // A deliberate sign, then the hands go down: pause -> compose -> speak.
-  await playFrames(page, [...ONE_SIGN, { kind: 'none', ms: 2600 }]);
+  await playFrames(page, [...ONE_SIGN, SENTENCE_PAUSE]);
   const spoken = await waitForState(
     page,
     (s) => !!s.caption && s.chips.length === 0 && !s.speaking,
@@ -68,7 +69,7 @@ test('sign -> sentence -> Ola voice in the call -> caption -> summary, with only
   await summary.getByRole('button', { name: 'Close' }).click();
   await expect(summary).toBeHidden();
 
-  // Network audit: the page talks to fake Meet, the extension talks only to /v1/* (and /healthz) on the API.
+  // Network audit: the page talks to fake Meet, the extension talks only to /v1/* on the API.
   const hosts = new Set<string>();
   const apiPaths = new Set<string>();
   for (const r of requests) {
@@ -79,18 +80,13 @@ test('sign -> sentence -> Ola voice in the call -> caption -> summary, with only
     if (u.origin === API_ORIGIN) apiPaths.add(u.pathname);
   }
   expect([...hosts].sort()).toEqual([API_ORIGIN, 'http://localhost:4173'].sort());
-  expect([...apiPaths].sort()).toEqual([
-    '/healthz',
-    '/v1/compose',
-    '/v1/recognize',
-    '/v1/session',
-    '/v1/speak',
-  ]);
-  for (const p of apiPaths) expect(p === '/healthz' || p.startsWith('/v1/')).toBe(true);
-  // Clips are small and sent only to /v1/recognize.
-  for (const r of requests.filter((r) => new URL(r.url()).pathname === '/v1/recognize')) {
-    expect(r.method()).toBe('POST');
-    expect(r.postDataBuffer()?.length ?? 0).toBeLessThan(2 * 1024 * 1024);
+  // Signs are named on the device by default (Settings > Signing, Gemini double-check off), so no clip is uploaded:
+  // /v1/recognize is never called and nothing sent to the API is a multipart (video) body.
+  expect([...apiPaths].sort()).toEqual(['/v1/compose', '/v1/health', '/v1/session', '/v1/speak']);
+  const apiRequests = requests.filter((r) => new URL(r.url()).origin === API_ORIGIN);
+  for (const r of apiRequests) {
+    expect(r.headers()['content-type'] ?? '').not.toMatch(/multipart/);
+    expect(r.postDataBuffer()?.length ?? 0).toBeLessThan(16 * 1024);
   }
   void context;
 });

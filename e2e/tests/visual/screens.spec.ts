@@ -1,4 +1,5 @@
 import type { Page } from '@playwright/test';
+import { SIGNS } from '../../../packages/shared/src/signs';
 import { FAKE_MEET, dispatch, expect, extensionId, test, waitForState } from '../../helpers/ext';
 
 /**
@@ -94,11 +95,16 @@ test.describe('in the call', () => {
     await shot(page, '07-confirm-popover');
   });
 
+  // The message drawn on the camera picture (the header shows a shortened status next to the toggle).
   const errors: Array<[string, unknown[], RegExp]> = [
-    ['not-recognised', [{ type: 'CLIP_DISCARDED', reason: 'tooShort' }], /Couldn’t recognize that/],
-    ['low-light', [{ type: 'LIGHT', dark: true }], /Poor lighting/],
-    ['hands-out', [{ type: 'HANDS_EDGE', out: true }], /Hands out of frame/],
-    ['offline', [{ type: 'ONLINE', online: false }], /Reconnecting/],
+    [
+      'not-recognised',
+      [{ type: 'CLIP_DISCARDED', reason: 'tooShort' }],
+      /Not recognised\. Sign again\./,
+    ],
+    ['low-light', [{ type: 'LIGHT', dark: true }], /Needs more light\./],
+    ['hands-out', [{ type: 'HANDS_EDGE', out: true }], /Keep hands in the frame\./],
+    ['offline', [{ type: 'ONLINE', online: false }], /Signs saved\. Sending soon\./],
   ];
   for (const [name, events, label] of errors) {
     test(`8 error state: ${name}`, async ({ page }) => {
@@ -136,7 +142,7 @@ test.describe('in the call', () => {
     await page.getByRole('tab', { name: 'Signs' }).click();
     await expect(
       page.getByRole('dialog', { name: 'Settings' }).getByRole('tabpanel').getByRole('listitem'),
-    ).toHaveCount(22);
+    ).toHaveCount(SIGNS.length);
     await shot(page, '10-supported-signs');
   });
 

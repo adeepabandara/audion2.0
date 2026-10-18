@@ -9,6 +9,7 @@ import {
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
+import { DEFAULT_PAUSE_MS } from '../../packages/shared/src/constants';
 import { makeFrames, type Segment } from '../../apps/extension/src/testing/fixtures';
 
 export const EXT_DIR = resolve(import.meta.dirname, '../../apps/extension/.output/chrome-mv3');
@@ -139,6 +140,9 @@ export const ONE_SIGN: Segment[] = [
   { kind: 'move', ms: 1500 },
   { kind: 'still', ms: 700 },
 ];
+
+/** Hands down for longer than the default sentence pause (Settings > Signing), so Ola composes and speaks. */
+export const SENTENCE_PAUSE: Segment = { kind: 'none', ms: DEFAULT_PAUSE_MS + 1100 };
 
 /** Measures the peak level of the audio track Meet (the fake page) sends, using audio-clock callbacks. */
 export function installPeakMeter(page: Page) {

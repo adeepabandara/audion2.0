@@ -29,7 +29,8 @@ export function Modal({
   return (
     <Dialog.Root open={open} onOpenChange={onOpenChange} modal={false}>
       <ThemedPortal>
-        <div className="au-modal-veil" aria-hidden="true" />
+        {/* Outside Dialog.Content, so it must follow `open` itself or it would cover the page while closed. */}
+        {open && <div className="au-modal-veil" aria-hidden="true" />}
         <Dialog.Content
           className="au-modal"
           style={{ width: `min(${width}px, calc(100vw - 24px))` }}
