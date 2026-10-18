@@ -25,6 +25,7 @@ import { ScriptedCaptions } from './demoCaptions';
 import { createGemma, GEMMA_SIZE_GB, type GemmaStatus } from './gemmaComposer';
 import { GemmaNotice } from './GemmaNotice';
 import { LocalVoice } from './localVoice';
+import { showSelf } from './youTile';
 import { Tour } from './tour/Tour';
 import { PipelineBus } from './pipeline/bus';
 import { ArchitectureView } from './pipeline/ArchitectureView';
@@ -110,13 +111,20 @@ for (const type of ['keydown', 'keyup', 'keypress'])
 
 // Test without a camera: a video file the visitor picks plays in place of the camera (it never leaves the browser).
 let testVideo: HTMLVideoElement | null = null;
+const youVideo = document.getElementById('you-video') as HTMLVideoElement | null;
 async function getCamera(): Promise<MediaStream> {
-  if (!testVideo) return navigator.mediaDevices.getUserMedia(CAMERA_CONSTRAINTS);
+  if (!testVideo) {
+    const live = await navigator.mediaDevices.getUserMedia(CAMERA_CONSTRAINTS);
+    showSelf(youVideo, live); // your own picture in the call's "You" tile, from the same stream
+    return live;
+  }
   testVideo.currentTime = 0;
   await testVideo.play();
   // Pictures only: the clip sent for recognition should not carry the video's soundtrack.
   const stream = (testVideo as HTMLVideoElement & { captureStream(): MediaStream }).captureStream();
-  return new MediaStream(stream.getVideoTracks());
+  const pictures = new MediaStream(stream.getVideoTracks());
+  showSelf(youVideo, pictures, { fromFile: true });
+  return pictures;
 }
 
 // The demo's "meeting": scripted captions, followed by the same tracker the extension uses on Meet's captions.
@@ -132,6 +140,8 @@ const meeting = new MeetingContext({
   firstMs: 8_000,
 });
 
+// Ola off (or its camera gone): the "You" tile goes back to your initial.
+const forgetSelf = (on: boolean) => !on && showSelf(youVideo, null);
 const session = createDefaultSession('/tracker.html', shadow, {
   getCamera,
   context: meeting,
@@ -239,6 +249,7 @@ function remembered(): string | null {
 }
 const dataSaver = (navigator as { connection?: { saveData?: boolean } }).connection?.saveData;
 let autoStarted = false;
+session.subscribe((state) => forgetSelf(state.on));
 session.subscribe((state) => {
   if (!state.on || autoStarted) return;
   autoStarted = true;

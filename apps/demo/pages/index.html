@@ -389,6 +389,13 @@
       .tile.you {
         outline: 2px solid #2dd4bf;
       }
+      /* A live camera is shown like a mirror (as every call app shows your own picture); a test video is not. */
+      .tile.you video {
+        transform: scaleX(-1);
+      }
+      .tile.you video.is-file {
+        transform: none;
+      }
       .meet-captions {
         flex: none;
         min-height: 54px;
@@ -1753,10 +1760,6 @@
             </section>
             <div class="call" id="call-stage">
               <div class="tiles">
-                <div class="tile you">
-                  <span class="avatar" style="background: #81c995" aria-hidden="true">Y</span
-                  ><span class="name">You (signing with Ola)</span>
-                </div>
                 <div class="tile">
                   <span class="avatar" style="background: #aecbfa" aria-hidden="true">M</span>
                   <video
@@ -1801,6 +1804,20 @@
                     data-call-video
                   ></video>
                   <span class="name">Dana</span>
+                </div>
+                <!-- You: bottom right, like a self view. Shows your live camera while Ola has it (the same stream
+                     Ola reads, so no second camera request); your initial otherwise. -->
+                <div class="tile you">
+                  <span class="avatar" style="background: #81c995" aria-hidden="true">Y</span>
+                  <video
+                    id="you-video"
+                    muted
+                    playsinline
+                    aria-hidden="true"
+                    tabindex="-1"
+                    hidden
+                  ></video
+                  ><span class="name">You (signing with Ola)</span>
                 </div>
               </div>
               <div
