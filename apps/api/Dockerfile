@@ -39,6 +39,7 @@ COPY packages/ui packages/ui
 COPY apps/extension apps/extension
 COPY apps/demo apps/demo
 RUN pnpm --filter @audion/shared build \
+ && pnpm --filter @audion/extension exec wxt prepare \
  && pnpm --filter @audion/demo build
 
 FROM node:22-slim
