@@ -9,6 +9,12 @@ describe('compose guard', () => {
     [['tomorrow', 'talk', 'finish'], "We'll finish talking tomorrow.", true],
     [['thankyou'], 'Thank you.', true],
     [['why', 'not'], "Why don't we?", true],
+    [['please_wait'], 'Please wait.', true],
+    [['thankyou_bye'], 'Thank you, goodbye.', true],
+    [['yes_please'], 'Yes, please.', true],
+    [['no_thankyou'], 'No, thank you.', true],
+    [['talk_later'], 'Talk to you later.', true],
+    [['not_now'], 'Not right now.', true],
     [['hello', 'wait'], 'Hello, please wait at the airport.', false],
     [['yes'], 'Yes, I love pizza.', false],
     [['look', 'time'], 'Look at the clock.', false],
@@ -43,6 +49,15 @@ describe('mock composer', () => {
     ]) {
       expect(isGroundedSentence(await composer.compose({ signs: triple }), triple)).toBe(true);
     }
+  });
+
+  it('fast path: single phrase chips map immediately to polished sentences', async () => {
+    expect(await composer.compose({ signs: ['please_wait'] })).toBe('Please wait.');
+    expect(await composer.compose({ signs: ['thankyou_bye'] })).toBe('Thank you, goodbye.');
+    expect(await composer.compose({ signs: ['yes_please'] })).toBe('Yes, please.');
+    expect(await composer.compose({ signs: ['no_thankyou'] })).toBe('No, thank you.');
+    expect(await composer.compose({ signs: ['talk_later'] })).toBe('Talk to you later.');
+    expect(await composer.compose({ signs: ['not_now'] })).toBe('Not right now.');
   });
 
   it('output shape: capitalised and punctuated', async () => {

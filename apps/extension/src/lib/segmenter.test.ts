@@ -75,11 +75,11 @@ describe('segmenter', () => {
     expect(types(ev)).not.toContain('signEnd');
   });
 
-  it('discards signs longer than 4 s with tooLong, as soon as the limit passes, and needs a rest before the next', () => {
+  it('discards signs longer than 6 s with tooLong, as soon as the limit passes, and needs a rest before the next', () => {
     const ev = runSegmenter(
       makeFrames([
         { kind: 'still', ms: 300 },
-        { kind: 'move', ms: 6000 },
+        { kind: 'move', ms: 8000 },
       ]),
     );
     const discards = ev.filter((e) => e.type === 'signDiscarded');

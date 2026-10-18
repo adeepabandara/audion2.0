@@ -88,13 +88,43 @@ const API_NAMES: Record<string, string> = {
 };
 export const apiName = (path: string) => API_NAMES[path] ?? path;
 
+/** What else the model was weighing, what it had to go on, and (when it looks like the cause) a plain hint. */
+export function signDetail(e: {
+  confidence: number;
+  top?: Array<{ sign: string; confidence: number }>;
+  frames?: number;
+  hands?: number;
+}): string {
+  const parts: string[] = [];
+  if (e.top && e.top.length > 1)
+    parts.push(
+      `Also considered: ${e.top
+        .slice(1)
+        .map((t) => `${t.sign} ${pct(t.confidence)}`)
+        .join(', ')}.`,
+    );
+  if (e.frames !== undefined && e.hands !== undefined)
+    parts.push(`It saw ${e.frames} frames with ${e.hands} hand${e.hands === 1 ? '' : 's'}.`);
+  // Found by replaying real clips: a resting second hand in view pulls one-handed signs towards other signs, and a sign
+  // cut short (only its first part) looks like a different one.
+  if (e.confidence < 0.85) {
+    if ((e.hands ?? 0) >= 2)
+      parts.push(
+        'Both hands were in view: for a one-handed sign, keep the other hand out of the picture.',
+      );
+    if (e.frames !== undefined && e.frames < 10)
+      parts.push('That was a very short sign: sign a little slower so all of it is seen.');
+  }
+  return parts.length ? ` ${parts.join(' ')}` : '';
+}
+
 /** What an event says, in plain words, for the live feed. Null for events too frequent or dull to list. */
 export function describe(e: PipelineEvent): string | null {
   switch (e.kind) {
     case 'device':
-      return `Sign “${e.sign}” named on this device (${pct(e.confidence)} sure, ${time(e.ms)}).`;
+      return `Sign “${e.sign}” named on this device (${pct(e.confidence)} sure, ${time(e.ms)}).${signDetail(e)}`;
     case 'device-unsure':
-      return `Sign model unsure (“${e.sign}”, ${pct(e.confidence)}): not accepted.`;
+      return `Sign model unsure (“${e.sign}”, ${pct(e.confidence)}): not accepted.${signDetail(e)}`;
     case 'cloud':
       if (e.role === 'answer') return `Gemini named the sign “${e.sign}” (${time(e.ms)}).`;
       return e.sign === e.deviceSign

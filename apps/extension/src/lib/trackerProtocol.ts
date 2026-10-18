@@ -1,3 +1,4 @@
+import type { DeviceAnswer } from './classifier';
 import type { Hand, LandmarkFrame } from './landmarks';
 
 /** Messages between the content script and the extension-origin tracker iframe. */
@@ -26,7 +27,7 @@ export type FromTracker =
       source: typeof TRACKER_SOURCE;
       type: 'classified';
       id: number;
-      result: { sign: string; confidence: number; threshold: number } | null;
+      result: DeviceAnswer | null;
     };
 
 export function isFromTracker(data: unknown): data is FromTracker {

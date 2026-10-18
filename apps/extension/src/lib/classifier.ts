@@ -4,7 +4,7 @@
 // there is no library to ship. The weights are public/models/signclf.json (made by tools/signclf/train.py).
 import type { Hand, LandmarkFrame } from './landmarks';
 
-export const STEPS = 32;
+export const STEPS = 48;
 export const FEATURES = 132;
 const WRIST = 0;
 const MIDDLE_MCP = 9;
@@ -29,6 +29,12 @@ export interface ClassifierModel {
 export interface Classified {
   sign: string;
   confidence: number;
+  /** The three most likely signs, best first (the first is `sign`): what else the model was considering. */
+  top: Array<{ sign: string; confidence: number }>;
+  /** How many frames with a hand it had to go on: a very short count means a cut-off or very quick sign. */
+  frames: number;
+  /** The most hands in view at once. A resting second hand in the picture changes what one-handed signs look like. */
+  hands: number;
 }
 
 /** One frame: up to two hands, ordered left to right in the image (a lone hand is slot 0). */
@@ -167,6 +173,10 @@ export function softmax(l: number[]): number[] {
   return e.map((v) => v / sum);
 }
 
+/** What the tracker page sends back: the guess, plus (when known) what the model saw. */
+export type DeviceAnswer = Pick<Classified, 'sign' | 'confidence'> &
+  Partial<Pick<Classified, 'top' | 'frames' | 'hands'>> & { threshold: number };
+
 /** The model's best guess and its confidence; null when there is too little to go on (under 4 frames with hands). */
 export function classify(
   model: ClassifierModel,
@@ -176,9 +186,14 @@ export function classify(
   const x = featurize(frames, aspect, model.steps);
   if (!x) return null;
   const p = softmax(logits(model, x));
-  let best = 0;
-  p.forEach((v, i) => {
-    if (v > p[best]!) best = i;
-  });
-  return { sign: model.signs[best]!, confidence: p[best]! };
+  const order = p.map((v, i) => [v, i] as const).sort((a, b) => b[0] - a[0]);
+  const [bestP, best] = order[0]!;
+  const seen = frames.filter((f) => f[0] !== null || f[1] !== null);
+  return {
+    sign: model.signs[best]!,
+    confidence: bestP,
+    top: order.slice(0, 3).map(([v, i]) => ({ sign: model.signs[i]!, confidence: v })),
+    frames: seen.length,
+    hands: seen.reduce((m, f) => Math.max(m, (f[0] ? 1 : 0) + (f[1] ? 1 : 0)), 0),
+  };
 }

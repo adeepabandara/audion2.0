@@ -8,6 +8,7 @@ import type { Composer } from './services/types.js';
 import type { GenAIClient } from './services/live/client.js';
 import { GeminiComposer } from './services/live/composer.js';
 import { GeminiRecognizer } from './services/live/recognizer.js';
+import { SIGNS } from '@audion/shared';
 import { CloudSpeaker, type TtsClient } from './services/live/speaker.js';
 import { getToken } from './testUtils.js';
 
@@ -119,9 +120,9 @@ describe('warm-up', () => {
     const synth = vi.fn(async () => [{ audioContent: new Uint8Array([1]) }]);
     const speaker = new CloudSpeaker({ synthesizeSpeech: synth } as unknown as TtsClient);
     await speaker.warmUp();
-    expect(synth).toHaveBeenCalledTimes(22 * 4); // every fixed phrase, for each of the four voices
+    expect(synth).toHaveBeenCalledTimes(SIGNS.length * 4); // every fixed phrase, for each of the four voices
     await speaker.speak({ text: 'Thank you.', voiceId: 'miles', speed: 1 });
-    expect(synth).toHaveBeenCalledTimes(22 * 4); // served from the warm cache
+    expect(synth).toHaveBeenCalledTimes(SIGNS.length * 4); // served from the warm cache
   });
 
   it('never throws: a failed warm-up must not stop the server', async () => {

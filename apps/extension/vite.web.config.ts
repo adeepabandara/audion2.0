@@ -30,6 +30,7 @@ function copyMediaPipe(): Plugin {
       cpSync(litertWasmDir, join(out, 'litert'), { recursive: true });
       // The extension's own icons, shown in the browser bar of the simulated window.
       cpSync(join(here, 'public/icon'), join(out, 'icon'), { recursive: true });
+      cpSync(join(here, 'public/icon/48.png'), join(out, 'favicon.ico')); // browsers ask for /favicon.ico by default
       // The on-device sign classifier's weights (the tracker loads models/signclf.json next to tracker.html).
       cpSync(join(here, 'public/models/signclf.json'), join(out, 'models/signclf.json'));
       cpSync(

@@ -21,13 +21,21 @@ export function tokenToSign(token: string): Sign | null {
   const t = token
     .trim()
     .toLowerCase()
-    .replace(/[^a-z]/g, '');
+    .replace(/[^a-z_]/g, '');
   if (!t) return null;
   const exact = SIGNS.find((s) => s === t);
   if (exact) return exact;
   if (t.length < 3) return null;
   const matches = SIGNS.filter((s) => s.startsWith(t));
-  return matches.length === 1 ? matches[0]! : null;
+  if (matches.length === 1) return matches[0]!;
+  const isolated = matches.filter((s) => !s.includes('_'));
+  if (
+    isolated.length === 1 &&
+    matches.every((m) => m === isolated[0] || m.startsWith(`${isolated[0]}_`))
+  ) {
+    return isolated[0]!;
+  }
+  return null;
 }
 
 /**

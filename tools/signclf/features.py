@@ -11,7 +11,7 @@ resampled to STEPS frames by nearest index (so a missing hand stays missing inst
 """
 import numpy as np
 
-STEPS = 32
+STEPS = 48
 FEATURES = 132
 WRIST, MIDDLE_MCP = 0, 9
 

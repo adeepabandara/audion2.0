@@ -1,3 +1,4 @@
+import type { DeviceAnswer } from './classifier';
 import type { LandmarkFrame } from './landmarks';
 import { isFromTracker, TRACKER_SOURCE, type FromTracker, type ToTracker } from './trackerProtocol';
 
@@ -12,7 +13,7 @@ export interface HandTracker {
     startT: number,
     endT: number,
     aspect: number,
-  ): Promise<{ sign: string; confidence: number; threshold: number } | null>;
+  ): Promise<DeviceAnswer | null>;
   stop(): void;
 }
 

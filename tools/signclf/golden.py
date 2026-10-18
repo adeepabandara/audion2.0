@@ -13,7 +13,7 @@ from train import SIGNS, Net
 
 model_json, out = sys.argv[1], sys.argv[2]
 m = json.load(open(model_json))
-net = Net()
+net = Net(m.get("hidden", 192))
 net.load_state_dict({
     "gru.weight_ih_l0": torch.tensor(m["wIh"]), "gru.weight_hh_l0": torch.tensor(m["wHh"]),
     "gru.bias_ih_l0": torch.tensor(m["bIh"]), "gru.bias_hh_l0": torch.tensor(m["bHh"]),

@@ -19,6 +19,8 @@ import { createPanelStore } from '../panel/store';
 import { VOICES } from '@audion/shared';
 import { playAudio } from '../lib/audioPlayer';
 import { MeetingContext } from '../panel/meetingContext';
+import { bindBrowser, getBrowser, setBrowser, subscribeBrowser } from './browser/browserState';
+import { ExtensionsMenu } from './browser/ExtensionsMenu';
 import { ScriptedCaptions } from './demoCaptions';
 import { createGemma, GEMMA_SIZE_GB, type GemmaStatus } from './gemmaComposer';
 import { LocalVoice } from './localVoice';
@@ -86,7 +88,7 @@ async function send(req: Request, ctx: { tabId: string }) {
 
 // The real Ola by Audion logo in the page header (the same vector the panel and the extension use).
 const brand = document.getElementById('brand');
-if (brand) createRoot(brand).render(<Wordmark size={64} />);
+if (brand) createRoot(brand).render(<Wordmark size={40} />);
 
 // The widget lives INSIDE the call window (not on the page): it scrolls and maximises with it, and the panel keeps
 // itself within the window (`bounds`). The window is the containing block for the panel's fixed positioning.
@@ -402,6 +404,29 @@ toolbarOla?.addEventListener('click', () => {
   setExpanded(!expanded);
 });
 
+// The browser window: Chrome-style tabs and toolbar, the extensions menu (where Ola is pinned) and joining the call.
+// What the window shows is one small state (`browser/browserState`); the tour changes it, and so do these controls.
+if (browserWindow) bindBrowser(browserWindow);
+document
+  .getElementById('toolbar-puzzle')
+  ?.addEventListener('click', () => setBrowser({ menuOpen: !getBrowser().menuOpen }));
+document.getElementById('join-btn')?.addEventListener('click', () => setBrowser({ scene: 'call' }));
+const extensionsMenuRoot = document.getElementById('ext-menu-root');
+if (extensionsMenuRoot) createRoot(extensionsMenuRoot).render(<ExtensionsMenu />);
+
+// When the call opens, Ola appears on its own a moment later, as the extension does on a real call page. Hiding the
+// widget and showing it again makes its pill come in (its entrance animation plays whenever it is drawn).
+let lastScene = getBrowser().scene;
+subscribeBrowser(({ scene }) => {
+  if (scene === 'call' && lastScene !== 'call' && !reducedMotion) {
+    container.style.display = 'none';
+    window.setTimeout(() => {
+      container.style.display = '';
+    }, 900);
+  }
+  lastScene = scene;
+});
+
 // Captions in the call window, and the meeting summary on the page. The meeting starts when the page loads, like a
 // meeting that is already going on; Ola only follows it (and sends it for summarising) if the setting is on.
 const strip = document.getElementById('meet-captions');
@@ -446,7 +471,20 @@ void getSettingsStore()
   });
 
 // ---- "Behind the scenes": feed the real events of this page into the live architecture view. ----
-session.onTrace((e) => bus.emit(e)); // signs, Gemini checks, sentences, voice and meeting summaries
+session.onTrace((e) => {
+  bus.emit(e); // signs, Gemini checks, sentences, voice and meeting summaries
+  // What the model saw for each sign, in the browser console too (only sign names and numbers, never video).
+  if (e.kind === 'device' || e.kind === 'device-unsure')
+    // eslint-disable-next-line no-console -- deliberate: a line the owner can copy when a sign is misread
+    console.debug('[Ola] on-device sign', {
+      guess: e.sign,
+      confidence: Number(e.confidence.toFixed(2)),
+      top: e.top?.map((t) => `${t.sign} ${t.confidence.toFixed(2)}`),
+      frames: e.frames,
+      hands: e.hands,
+      accepted: e.kind === 'device',
+    });
+});
 session.onFrame((f) => bus.emit({ kind: 'frame', hands: f.hands.length }));
 let wasSigning = false;
 session.subscribe((st) => {
@@ -461,19 +499,46 @@ captions.view((recent) => {
   if (last) bus.emit({ kind: 'caption', speaker: last.speaker, text: last.text });
 });
 
-/** The full-screen view and the button that opens it. Focus returns to the button when it closes. */
+/** The Architecture tab: the live view under the page's top bar. Prototype and Architecture are the two tabs. */
 function ArchitectureHost() {
   const [open, setOpen] = useState(false);
   useEffect(() => {
+    if (open) window.scrollTo(0, 0); // the top bar is fixed while Architecture is open
     document.body.classList.toggle('arch-open', open);
     // The call videos are hidden behind the diagram, so they rest while it is open.
     setCallVideos(!open && !reducedMotion);
+    const tabs = [...document.querySelectorAll<HTMLElement>('.topbar__tab')];
+    for (const t of tabs) {
+      const on = (t.dataset.tab === 'architecture') === open;
+      t.setAttribute('aria-selected', String(on));
+      t.tabIndex = on ? 0 : -1;
+    }
   }, [open]);
   useEffect(() => {
-    const button = document.getElementById('open-architecture');
-    const show = () => setOpen(true);
-    button?.addEventListener('click', show);
-    return () => button?.removeEventListener('click', show);
+    const tabs = [...document.querySelectorAll<HTMLElement>('.topbar__tab')];
+    const pick = (t: HTMLElement) => setOpen(t.dataset.tab === 'architecture');
+    const offs = tabs.map((t) => {
+      const click = () => pick(t);
+      const key = (e: KeyboardEvent) => {
+        if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(e.key)) return;
+        e.preventDefault();
+        const next =
+          e.key === 'Home'
+            ? 0
+            : e.key === 'End'
+              ? tabs.length - 1
+              : (tabs.indexOf(t) + (e.key === 'ArrowRight' ? 1 : -1) + tabs.length) % tabs.length;
+        tabs[next]!.focus();
+        pick(tabs[next]!);
+      };
+      t.addEventListener('click', click);
+      t.addEventListener('keydown', key);
+      return () => {
+        t.removeEventListener('click', click);
+        t.removeEventListener('keydown', key);
+      };
+    });
+    return () => offs.forEach((off) => off());
   }, []);
   return (
     <ArchitectureView
@@ -481,12 +546,12 @@ function ArchitectureHost() {
       open={open}
       onClose={() => {
         setOpen(false);
-        document.getElementById('open-architecture')?.focus();
+        document.getElementById('tab-prototype')?.focus();
       }}
     />
   );
 }
-// The quick tour: welcome, a simulated extension page, a short setup, then guided steps in the call.
+// The quick tour: install the extension, join a meeting, use Ola. The browser window changes as it goes.
 const tourRoot = document.getElementById('tour-root');
 if (tourRoot) {
   const q = new URLSearchParams(location.search).get('tour');

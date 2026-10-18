@@ -44,12 +44,26 @@ describe('classifier parity with the PyTorch model (synthetic golden inputs)', (
 });
 
 describe('classify', () => {
-  it('gives one of the 22 signs with a confidence between 0 and 1', () => {
+  it('gives one of the 40 signs with a confidence between 0 and 1', () => {
     const c = golden[0]!;
     const r = classify(M, framesOf(c), c.w / c.h)!;
     expect(M.signs).toContain(r.sign);
     expect(r.confidence).toBeGreaterThan(0);
     expect(r.confidence).toBeLessThanOrEqual(1);
+  });
+
+  it('also reports the three best guesses, how many frames it saw, and how many hands', () => {
+    const c = golden[0]!;
+    const frames = framesOf(c);
+    const r = classify(M, frames, c.w / c.h)!;
+    expect(r.top).toHaveLength(3);
+    expect(r.top[0]).toEqual({ sign: r.sign, confidence: r.confidence });
+    expect(r.top[0]!.confidence).toBeGreaterThanOrEqual(r.top[1]!.confidence);
+    expect(r.top[1]!.confidence).toBeGreaterThanOrEqual(r.top[2]!.confidence);
+    expect(new Set(r.top.map((t) => t.sign)).size).toBe(3);
+    expect(r.frames).toBe(frames.filter((f) => f[0] || f[1]).length);
+    const most = Math.max(...frames.map((f) => (f[0] ? 1 : 0) + (f[1] ? 1 : 0)));
+    expect(r.hands).toBe(most);
   });
 
   it('refuses a sign with fewer than 4 frames showing a hand', () => {

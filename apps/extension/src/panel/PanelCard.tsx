@@ -41,7 +41,7 @@ const SHORT_STATUS: Record<string, string> = {
   'Sentence ready': 'Ready',
   'Poor lighting': 'Low light',
   'Voice not connected': 'No voice',
-  'Camera blocked': 'No camera',
+  'Camera blocked': 'Blocked',
   'Needs attention': 'Attention',
   'Reconnecting…': 'Offline',
 };

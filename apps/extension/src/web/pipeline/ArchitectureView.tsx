@@ -189,7 +189,6 @@ export function ArchitectureView({ bus, open, onClose }: ArchitectureViewProps) 
   const [pinned, setPinned] = useState<NodeId | null>(null);
   const [packets, setPackets] = useState<Packet[]>([]);
   const dialog = useRef<HTMLDivElement>(null);
-  const closeButton = useRef<HTMLButtonElement>(null);
   const circles = useRef(new Map<number, SVGCircleElement>());
   const paths = useRef(new Map<EdgeId, SVGPathElement>());
   const nextPacket = useRef(1);
@@ -278,10 +277,9 @@ export function ArchitectureView({ bus, open, onClose }: ArchitectureViewProps) 
     return () => cancelAnimationFrame(raf);
   }, [open, reduced, packets]);
 
-  // Focus: into the dialog when it opens, Escape closes, Tab stays inside.
+  // It sits under the page's tabs, so focus stays where the visitor put it (on the tab); Escape goes back.
   useEffect(() => {
     if (!open) return;
-    closeButton.current?.focus();
     const previous = document.body.style.overflow;
     document.body.style.overflow = 'hidden';
     return () => {
@@ -344,21 +342,6 @@ export function ArchitectureView({ bus, open, onClose }: ArchitectureViewProps) 
       requestClose();
       return;
     }
-    if (e.key !== 'Tab' || !dialog.current) return;
-    const focusable = [
-      ...dialog.current.querySelectorAll<HTMLElement>('button, [tabindex="0"], a[href]'),
-    ].filter((el) => !el.hasAttribute('disabled'));
-    if (!focusable.length) return;
-    const first = focusable[0]!;
-    const last = focusable[focusable.length - 1]!;
-    const active = document.activeElement;
-    if (e.shiftKey && active === first) {
-      e.preventDefault();
-      last.focus();
-    } else if (!e.shiftKey && active === last) {
-      e.preventDefault();
-      first.focus();
-    }
   };
 
   const selected = pinned ?? hover;
@@ -379,8 +362,7 @@ export function ArchitectureView({ bus, open, onClose }: ArchitectureViewProps) 
   return (
     <div
       className={`arch${closing ? ' arch--out' : ''}`}
-      role="dialog"
-      aria-modal="true"
+      role="region"
       aria-labelledby="arch-title"
       ref={dialog}
       onKeyDown={onKeyDown}
@@ -400,13 +382,8 @@ export function ArchitectureView({ bus, open, onClose }: ArchitectureViewProps) 
           <button type="button" className="arch__btn" onClick={playSample} disabled={playing}>
             {playing ? 'Playing a sample…' : 'Play a sample'}
           </button>
-          <button
-            type="button"
-            className="arch__btn arch__btn--close"
-            ref={closeButton}
-            onClick={requestClose}
-          >
-            Close
+          <button type="button" className="arch__btn arch__btn--close" onClick={requestClose}>
+            Back to prototype
           </button>
         </div>
       </header>

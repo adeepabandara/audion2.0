@@ -24,6 +24,45 @@ const WORDS: Record<string, string> = {
   fine: 'fine',
   same: 'same',
   not: 'not',
+  please_wait: 'please wait',
+  thankyou_bye: 'thank you, goodbye',
+  yes_please: 'yes, please',
+  no_thankyou: 'no, thank you',
+  talk_later: 'talk to you later',
+  not_now: 'not right now',
+  why_not: 'why not',
+  think_same: 'I agree',
+  fine_thankyou: "I'm fine, thank you",
+  talk_tomorrow: "let's talk tomorrow",
+  think_not: "I don't think so",
+  finish_now: 'all done now',
+  tomorrow_time: 'what time tomorrow',
+  time_now: 'what time is it now',
+  who_where: 'who and where',
+  look_listen: 'look and listen',
+  wait_later: 'please wait until later',
+  hello_fine: "hello, I'm fine",
+};
+
+export const PHRASE_SENTENCES: Record<string, string> = {
+  please_wait: 'Please wait.',
+  thankyou_bye: 'Thank you, goodbye.',
+  yes_please: 'Yes, please.',
+  no_thankyou: 'No, thank you.',
+  talk_later: 'Talk to you later.',
+  not_now: 'Not right now.',
+  why_not: 'Why not?',
+  think_same: 'I agree.',
+  fine_thankyou: "I'm fine, thank you.",
+  talk_tomorrow: "Let's talk tomorrow.",
+  think_not: "I don't think so.",
+  finish_now: 'All done now.',
+  tomorrow_time: 'What time tomorrow?',
+  time_now: 'What time is it now?',
+  who_where: 'Who and where?',
+  look_listen: 'Look and listen.',
+  wait_later: 'Please wait until later.',
+  hello_fine: "Hello, I'm fine.",
 };
 
 const TIME_WORDS = new Set(['now', 'later', 'tomorrow']);
@@ -35,6 +74,11 @@ const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
 /** Rule-based sentence from glosses. Adds punctuation and a few function words only. Used by MOCK=1 and as the fast path. */
 export function composeByRules(signs: string[]): string {
   const g = signs.map((s) => s.toLowerCase());
+
+  // Fast-path: single phrase chip maps immediately to polished sentence
+  if (g.length === 1 && PHRASE_SENTENCES[g[0]!]) {
+    return PHRASE_SENTENCES[g[0]!]!;
+  }
 
   // Pattern: [time..., talk, finish] reads best as "We'll finish talking <time>."
   if (g.includes('talk') && g.includes('finish')) {

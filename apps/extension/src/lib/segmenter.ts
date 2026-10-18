@@ -20,7 +20,7 @@ export const DEFAULT_SEGMENTER: SegmenterConfig = {
   restSpeed: 0.4,
   holdMs: 400,
   minMs: 600,
-  maxMs: 4000,
+  maxMs: 6000,
   pauseMs: 1500,
   lostMs: 250,
 };
