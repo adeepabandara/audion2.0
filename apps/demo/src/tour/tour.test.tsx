@@ -10,7 +10,7 @@ import { GLIDE_MS, easeOut, glideFrame, glideSpot } from './glide';
 import { GestureList } from './Gestures';
 import { SignGuide } from './SignGuide';
 import { COACH_STEPS, PRACTICE_SENTENCES, PRACTICE_SIGNS, SIGN_MOTION } from './steps';
-import { Tour } from './Tour';
+import { SLOW_START_MS, Tour } from './Tour';
 import * as zoomModule from './zoom';
 import { applyZoom, computeZoom, NO_ZOOM, type Matrix } from './zoom';
 
@@ -91,6 +91,10 @@ describe('the guided steps', () => {
     expect(zoom.pin).toBeGreaterThan(zoom.join!);
     expect(zoom.settings).toBeGreaterThan(zoom.sign!);
     expect(zoom.sign).toBe(1); // no zoom while playing
+    // The first look at Ola in the call and the camera steps keep the whole window in view.
+    expect(zoom.open).toBe(1);
+    expect(zoom.on).toBe(1);
+    expect(zoom.ready).toBe(1);
   });
 
   it('happens on the right page of the browser window', () => {
@@ -543,10 +547,25 @@ describe('the tour', () => {
     act(() => fake.set({ problems: ['cameraBlocked'] }));
     // The title says what is wrong (not "Turn Ola on" / "Camera ready"), the line says what to do.
     expect(heading('Camera blocked')).toBeTruthy();
-    expect(screen.getByText(/Allow the camera in your browser/)).toBeTruthy();
+    expect(screen.getByText(/Allow while visiting the site.*Try again/)).toBeTruthy();
     act(() => fake.set({ problems: [], on: true }));
-    expect(screen.queryByText(/Allow the camera in your browser/)).toBeNull();
+    expect(screen.queryByText(/Allow while visiting the site/)).toBeNull();
     expect(screen.queryByRole('heading', { name: 'Camera blocked' })).toBeNull();
+  });
+
+  it('notices a camera stuck on Starting (a permission prompt) and says which choice works', () => {
+    const { panelStore, fake } = mount();
+    toTheCall();
+    act(() => panelStore.useStore.getState().setExpanded(true));
+    tick(1000);
+    act(() => fake.set({ on: true, starting: true }));
+    tick(1000);
+    expect(heading('Camera ready')).toBeTruthy(); // starting for a moment is normal
+    tick(SLOW_START_MS);
+    expect(heading('Camera not starting')).toBeTruthy();
+    expect(screen.getByText(/Allow while visiting the site.*Allow this time/)).toBeTruthy();
+    act(() => fake.set({ starting: false }));
+    expect(screen.queryByRole('heading', { name: 'Camera not starting' })).toBeNull();
   });
 
   it('skips a waiting step at once when the visitor has already done it', () => {

@@ -521,7 +521,7 @@ captions.view((recent) => {
 function ArchitectureHost() {
   const [open, setOpen] = useState(false);
   useEffect(() => {
-    if (open) window.scrollTo(0, 0); // the top bar is fixed while Architecture is open
+    if (open) window.scrollTo(0, 0); // Architecture takes the prototype's place, under the top bar
     document.body.classList.toggle('arch-open', open);
     // The call videos are hidden behind the diagram, so they rest while it is open.
     setCallVideos(!open && !reducedMotion);
